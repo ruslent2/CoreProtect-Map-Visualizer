@@ -1,0 +1,13 @@
+{
+  "name": "coreprotect-map-visualizer",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "install:all": "cd server && npm install && cd ../web && npm install",
+    "server": "cd server && npm start",
+    "dev:server": "cd server && npm run dev",
+    "dev:web": "cd web && npm run dev",
+    "build:web": "cd web && npm run build"
+  }
+}

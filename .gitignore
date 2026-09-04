@@ -1,0 +1,22 @@
+node_modules/
+data/
+web/dist/
+*.log
+config.json
+
+# Local tooling and temporary files
+.zcode/
+.temp/
+
+# Local databases and database backups/journal files
+*.db
+*.db-*
+*.sqlite
+*.sqlite-*
+*.sqlite3
+*.sqlite3-*
+*.bak
+
+# Local database helper scripts
+make_sample_db.py
+recover_db.py

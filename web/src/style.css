@@ -1,0 +1,85 @@
+:root {
+  --bg: #0b0e14; --panel: #141922; --panel2: #1b212d; --border: #2a3242;
+  --text: #d7dee9; --muted: #8a94a6; --accent: #4fc3f7;
+}
+* { box-sizing: border-box; }
+html, body, #app { height: 100%; margin: 0; font: 13px/1.45 "Segoe UI", system-ui, sans-serif; color: var(--text); background: var(--bg); }
+#app { display: flex; overflow: hidden; }
+
+#filters {
+  width: 300px; min-width: 300px; background: var(--panel); border-right: 1px solid var(--border);
+  padding: 12px; overflow-y: auto;
+}
+#inspector {
+  width: 340px; min-width: 340px; background: var(--panel); border-left: 1px solid var(--border);
+  padding: 12px; overflow-y: auto; display: none;
+}
+#inspector.open { display: block; }
+#map-wrap { flex: 1; position: relative; overflow: hidden; }
+#map { position: absolute; inset: 0; }
+
+h3 { margin: 14px 0 6px; font-size: 12px; text-transform: uppercase; letter-spacing: .5px; color: var(--muted); }
+select, input[type=text], input[type=number] {
+  width: 100%; padding: 5px 7px; background: var(--panel2); color: var(--text);
+  border: 1px solid var(--border); border-radius: 4px;
+}
+button {
+  padding: 5px 10px; background: var(--panel2); color: var(--text);
+  border: 1px solid var(--border); border-radius: 4px; cursor: pointer;
+}
+button:hover { border-color: var(--accent); }
+button.primary { background: #194a5e; border-color: var(--accent); }
+
+.row { display: flex; gap: 6px; align-items: center; margin: 4px 0; }
+.row > * { flex: 1; }
+.tiny { font-size: 11px; color: var(--muted); }
+.chips { display: flex; flex-wrap: wrap; gap: 4px; margin: 4px 0; }
+.chip {
+  display: inline-flex; align-items: center; gap: 4px; padding: 2px 7px;
+  background: var(--panel2); border: 1px solid var(--border); border-radius: 10px; font-size: 11px;
+}
+.chip .dot { width: 8px; height: 8px; border-radius: 2px; }
+.chip .x { cursor: pointer; color: var(--muted); margin-left: 2px; }
+.chip .x:hover { color: #ff6b6b; }
+.excl-toggle { font-size: 11px; padding: 2px 8px; }
+.excl-toggle.on { background: #5e2222; border-color: #a33; }
+
+.list-picker { max-height: 160px; overflow-y: auto; border: 1px solid var(--border); border-radius: 4px; background: var(--panel2); }
+.list-picker .item { padding: 3px 7px; cursor: pointer; display: flex; gap: 6px; align-items: center; }
+.list-picker .item:hover { background: var(--border); }
+.list-picker .item.sel { background: #194a5e; }
+
+#tooltip {
+  position: absolute; pointer-events: none; display: none; z-index: 10;
+  background: rgba(15, 19, 27, .95); border: 1px solid var(--border); border-radius: 6px;
+  padding: 8px 10px; max-width: 320px; box-shadow: 0 4px 16px rgba(0,0,0,.5);
+}
+#tooltip .nick { font-weight: 600; }
+#tooltip .ev { display: flex; gap: 6px; align-items: center; margin-top: 3px; cursor: pointer; }
+#tooltip .ev:hover { background: var(--panel2); }
+#tooltip .swatch { width: 10px; height: 10px; border-radius: 2px; flex: none; }
+
+#statusbar {
+  position: absolute; left: 10px; bottom: 10px; z-index: 5;
+  background: rgba(15,19,27,.9); border: 1px solid var(--border); border-radius: 6px;
+  padding: 6px 10px; font-size: 11px; color: var(--muted);
+}
+#legend {
+  position: absolute; right: 10px; bottom: 10px; z-index: 5;
+  background: rgba(15,19,27,.9); border: 1px solid var(--border); border-radius: 6px;
+  padding: 6px 10px; font-size: 11px; max-height: 40%; overflow-y: auto;
+}
+#legend .li { display: flex; align-items: center; gap: 6px; margin: 2px 0; }
+#legend .sw { width: 10px; height: 10px; border-radius: 2px; flex: none; }
+#world-hud {
+  position: absolute; top: 10px; right: 10px; z-index: 5;
+  background: rgba(15,19,27,.9); border: 1px solid var(--border); border-radius: 6px;
+  padding: 6px 10px; font-size: 11px;
+}
+#world-hud select { width: auto; }
+
+.card { background: var(--panel2); border: 1px solid var(--border); border-radius: 6px; padding: 8px 10px; margin: 6px 0; }
+.card h4 { margin: 0 0 6px; }
+.kv { display: flex; justify-content: space-between; gap: 8px; padding: 2px 0; font-size: 12px; }
+.kv .k { color: var(--muted); }
+.nearby-item { padding: 3px 0; border-bottom: 1px solid var(--border); font-size: 12px; }

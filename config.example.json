@@ -1,0 +1,16 @@
+{
+  "databasePath": "F:/Mine/CoreProtect-Map-Visualizer/database.db",
+  "cachePath": "F:/Mine/CoreProtect-Map-Visualizer/data/cache.db",
+  "port": 3010,
+  "host": "127.0.0.1",
+  "bluemap": {
+    "enabled": false,
+    "baseUrl": "http://127.0.0.1:8100",
+    "tileTemplate": "/maps/{world}/tiles/{zoom}/{x}_{z}.png",
+    "tileSize": 512,
+    "blocksPerTileAtZoom0": 512,
+    "maxZoom": 5
+  },
+  "defaultLimit": 50000,
+  "syncIntervalMs": 30000
+}
