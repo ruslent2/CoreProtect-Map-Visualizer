@@ -2,6 +2,10 @@ import type { Filters } from './state';
 import type { ColorMode } from './colors';
 import { uuidColor, actionColor, rgbHex, ACTION_LABELS } from './colors';
 
+// Временная точка отсчёта: старая БД больше не пополняется.
+// 2026-07-17 00:00:00 по локальному времени браузера.
+const FILTER_NOW = new Date(2026, 6, 17, 0, 0, 0).getTime() / 1000;
+
 type ChangeFn = (patch: Partial<Filters>) => void;
 
 export interface MetaData {
@@ -58,7 +62,7 @@ export function buildFilterPanel(
     <button id="t-clear" class="excl-toggle ${f.tFrom || f.tTo ? 'on' : ''}">всё время</button>
   </div>`);
   timeRow.querySelectorAll<HTMLButtonElement>('.t-preset').forEach(b => {
-    b.onclick = () => onChange({ tTo: Math.floor(Date.now() / 1000), tFrom: Math.floor(Date.now() / 1000) - Number(b.dataset.h) * 3600 });
+    b.onclick = () => onChange({ tTo: FILTER_NOW, tFrom: FILTER_NOW - Number(b.dataset.h) * 3600 });
   });
   (timeRow.querySelector('#t-clear') as HTMLButtonElement).onclick = () => onChange({ tFrom: null, tTo: null });
   root.append(timeRow);
