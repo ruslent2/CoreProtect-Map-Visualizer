@@ -4,12 +4,14 @@
   "port": 3010,
   "host": "127.0.0.1",
   "bluemap": {
-    "enabled": false,
-    "baseUrl": "http://127.0.0.1:8100",
-    "tileTemplate": "/maps/{world}/tiles/{zoom}/{x}_{z}.png",
-    "tileSize": 512,
-    "blocksPerTileAtZoom0": 512,
-    "maxZoom": 5
+    "enabled": true,
+    "baseUrl": "http://dragonseven.top:25674",
+    "tileTemplate": "/api/bluemap/{world}/{zoom}/{x}/{z}.png",
+    "tileSize": 500,
+    "tileAspectRatio": 1,
+    "blocksPerTileAtZoom0": 501,
+    "lodFactor": 5,
+    "maxZoom": 3
   },
   "defaultLimit": 50000,
   "syncIntervalMs": 30000

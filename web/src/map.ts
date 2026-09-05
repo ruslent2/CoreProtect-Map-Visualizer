@@ -3,6 +3,9 @@ import type { Filters } from './state';
 import type { CpEvent, Chunk } from './api';
 import { eventColor, actionColor, uuidColor, type ColorContext } from './colors';
 
+const MIN_SCALE = 1 / 16; // 1 пиксель = 16 блоков; обзор чанков остаётся читаемым
+const MAX_SCALE = 64;
+
 export interface MapCallbacks {
   onHover: (evs: CpEvent[] | null, screenX: number, screenY: number) => void;
   onClick: (evs: CpEvent[]) => void;
@@ -123,7 +126,7 @@ export class MapView {
       // Запоминаем блок под курсором ДО изменения масштаба
       const [bx, bz] = this.screenToBlock(e.clientX, e.clientY);
       const k = e.deltaY < 0 ? 1.2 : 1 / 1.2;
-      this.cam.scale = Math.min(64, Math.max(1, this.cam.scale * k));
+      this.cam.scale = Math.min(MAX_SCALE, Math.max(MIN_SCALE, this.cam.scale * k));
       // После изменения scale смещаем камеру так, чтобы bx/bz остался
       // под курсором: cam = bx + (cam_old - bx) / k
       this.cam.cx = bx + (this.cam.cx - bx) / k;
@@ -263,7 +266,7 @@ export class MapView {
     this.cam.cx = (x1 + x2) / 2;
     this.cam.cz = (z1 + z2) / 2;
     const w = this.app.renderer.width, h = this.app.renderer.height;
-    this.cam.scale = Math.min(64, Math.max(1, Math.min(w / (x2 - x1 + 8), h / (z2 - z1 + 8))));
+    this.cam.scale = Math.min(MAX_SCALE, Math.max(MIN_SCALE, Math.min(w / (x2 - x1 + 8), h / (z2 - z1 + 8))));
     this.updateTransform();
   }
 

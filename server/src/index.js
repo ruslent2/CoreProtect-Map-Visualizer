@@ -112,6 +112,23 @@ app.get('/api/config', async () => ({
   defaultLimit: cfg.defaultLimit ?? 50000,
 }));
 
+// Прокси Bluemap нужен, потому что внешний сервер не отдаёт CORS-заголовок.
+// PNG проходит через backend без записи на диск и без изменения исходных данных.
+app.get('/api/bluemap/:world/:zoom/:tx/:tz.png', async (req, reply) => {
+  const bluemap = cfg.bluemap ?? {};
+  if (!bluemap.enabled || !bluemap.baseUrl) return reply.code(404).send({ error: 'bluemap disabled' });
+  const world = encodeURIComponent(req.params.world);
+  const zoom = encodeURIComponent(req.params.zoom);
+  const tx = encodeURIComponent(req.params.tx);
+  const tz = encodeURIComponent(req.params.tz);
+  const url = `${bluemap.baseUrl.replace(/\/$/, '')}/maps/${world}/tiles/${zoom}/x${tx}/z${tz}.png`;
+  const response = await fetch(url);
+  if (!response.ok) return reply.code(response.status).send({ error: `Bluemap tile ${response.status}` });
+  reply.header('Content-Type', response.headers.get('content-type') || 'image/png');
+  reply.header('Cache-Control', 'public, max-age=300');
+  return reply.send(Buffer.from(await response.arrayBuffer()));
+});
+
 app.get('/api/sync/status', async () => store.status);
 
 app.post('/api/sync/start', async () => {

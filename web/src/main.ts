@@ -25,9 +25,27 @@ async function refresh() {
   const ctx = { mode: filters.mode, mix: filters.mix, tMin, tMax };
   try {
     if (overview) {
-      const { chunks, elapsedMs } = await apiAggregate(filters);
+      // Не агрегируем всю таблицу CoreProtect (она может содержать миллионы
+      // строк). На обзорном LOD достаточно области вокруг текущего viewport.
+      // Ограничение особенно важно на минимальном масштабе, где viewport
+      // покрывает десятки тысяч блоков.
+      const rw = map.app.renderer?.width || window.innerWidth;
+      const rh = map.app.renderer?.height || window.innerHeight;
+      const maxSide = 4096;
+      const visibleW = Math.min(rw / map.cam.scale, maxSide);
+      const visibleH = Math.min(rh / map.cam.scale, maxSide);
+      const aggregateFilters: Filters = {
+        ...filters,
+        bbox: {
+          x1: map.cam.cx - visibleW / 2,
+          x2: map.cam.cx + visibleW / 2,
+          z1: map.cam.cz - visibleH / 2,
+          z2: map.cam.cz + visibleH / 2,
+        },
+      };
+      const { chunks, elapsedMs } = await apiAggregate(aggregateFilters);
       map.setChunks(chunks, ctx);
-      setStatus(`агрегаты: ${chunks.length} чанков · ${elapsedMs} мс · zoom < 3 = обзор`, false);
+      setStatus(`агрегаты: ${chunks.length} чанков · ${elapsedMs} мс · область до ${maxSide}×${maxSide} блоков`, false);
     } else {
       // в детальном режиме подгружаем только видимую область + margin
       const rw = map.app.renderer?.width || window.innerWidth;
@@ -76,13 +94,15 @@ function onFiltersChanged(patch: Partial<Filters>) {
 function onCamera(scale: number, cx: number, cz: number) {
   const zoomEl = $('hud-zoom');
   if (zoomEl) {
-    zoomEl.textContent = `1:${scale.toFixed(1)}`;
+    // scale — это пикселей на блок, поэтому при отдалении значение вторая
+    // часть масштаба должна расти, а не уменьшаться.
+    zoomEl.textContent = `1:${(1 / scale).toFixed(1)}`;
   }
   if (!bluemap) return;
   const w = map.app.renderer.width / scale, h = map.app.renderer.height / scale;
   bluemap.update({ x1: cx - w / 2, z1: cz - h / 2, x2: cx + w / 2, z2: cz + h / 2, pxPerBlock: scale });
   const wantOverview = scale < 3;
-  if (wantOverview !== (map.getMode() === 'aggregate')) scheduleRefresh();
+  if (wantOverview !== (map.getMode() === 'aggregate') || wantOverview) scheduleRefresh();
 }
 
 // --- Hover / Tooltip ---
@@ -193,6 +213,9 @@ async function boot() {
   } catch {
     meta = { worlds: [{ id: 1, world: 'world' }], users: [], materials: [], actions: [] };
   }
+
+  // Идентификатор карты Bluemap совпадает с именем мира в CoreProtect.
+  bluemap.setWorld(filters.world);
 
   buildFilterPanel(filtersEl, filters, meta, onFiltersChanged, refresh);
   hudEl.innerHTML = `Мир: <b>${filters.world}</b> · X: <span id="hud-x">—</span> Z: <span id="hud-z">—</span> · масштаб <span id="hud-zoom"></span>`;

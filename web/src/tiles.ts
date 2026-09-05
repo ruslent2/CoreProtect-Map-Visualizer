@@ -2,14 +2,17 @@ import { Container, Sprite, Texture } from 'pixi.js';
 
 // Слой подложки Bluemap: generic XYZ-в-мировых-координатах тайловый слой.
 // Шаблон URL настраивается (разные версии Bluemap именуют тайлы по-разному):
-// {world} {zoom} {x} {z}. Тайл zoom=0 покрывает blocksPerTileAtZoom0 блоков,
-// каждый следующий zoom делит вдвое.
+// {world} {zoom} {x} {z}. У BlueMap после обрезки верхней половины PNG
+// один тайл содержит 501×501 пикселей; масштаб каждого следующего уровня
+// увеличивает покрытие одного пикселя в 5 раз.
 export interface BluemapConfig {
   enabled: boolean;
   baseUrl: string;
   tileTemplate: string;
   tileSize: number;
+  tileAspectRatio: number;
   blocksPerTileAtZoom0: number;
+  lodFactor: number;
   maxZoom: number;
 }
 
@@ -19,6 +22,9 @@ export class BluemapLayer {
   container = new Container();
   private cfg: BluemapConfig;
   private world = '';
+  private generation = 0;
+  private zoom = -1;
+  private lastView = '';
   private tiles = new Map<string, Sprite>();
   private pending = new Set<string>();
 
@@ -26,8 +32,17 @@ export class BluemapLayer {
     this.cfg = cfg;
   }
 
-  setWorld(world: string) { this.world = world; this.clear(); }
+  setWorld(world: string) {
+    if (this.world === world) return;
+    this.world = world;
+    this.generation++;
+    this.zoom = -1;
+    this.clear();
+  }
   clear() {
+    this.generation++;
+    this.pending.clear();
+    this.lastView = '';
     for (const s of this.tiles.values()) s.destroy({ texture: true, textureSource: true });
     this.tiles.clear();
   }
@@ -35,17 +50,32 @@ export class BluemapLayer {
   // Обновить видимые тайлы под текущую камеру (в блоках)
   update(view: { x1: number; z1: number; x2: number; z2: number; pxPerBlock: number }) {
     if (!this.cfg.enabled) return;
+    const baseBlocks = this.cfg.blocksPerTileAtZoom0;
+    const desiredBlocksPerTile = this.cfg.tileSize / Math.max(0.01, view.pxPerBlock);
+    const lod = Math.round(Math.log(Math.max(1, desiredBlocksPerTile) / baseBlocks) / Math.log(this.cfg.lodFactor));
+    // zoom=1: 1 пиксель = 1 блок; zoom=2: 1 = 5 блоков;
+    // zoom=3: 1 = 25 блоков.
     const z = Math.min(this.cfg.maxZoom,
-      Math.max(0, Math.ceil(Math.log2(this.cfg.tileSize / view.pxPerBlock))));
-    const bpt = this.cfg.blocksPerTileAtZoom0 / (1 << z); // блоков на тайл
+      Math.max(1, 1 + lod));
+    if (z !== this.zoom) {
+      this.zoom = z;
+      this.clear();
+    }
+    const viewKey = `${z}:${Math.floor(view.x1)}:${Math.floor(view.z1)}:${Math.ceil(view.x2)}:${Math.ceil(view.z2)}`;
+    if (viewKey === this.lastView) return;
+    this.lastView = viewKey;
+    const generation = this.generation;
+    // zoom=1: 501 блока на грань, zoom=2: 2505, zoom=3: 12525.
+    const bpt = this.cfg.blocksPerTileAtZoom0 * Math.pow(this.cfg.lodFactor, z - 1);
+    const tileHeightBlocks = bpt * this.cfg.tileAspectRatio;
     const tx1 = Math.floor(view.x1 / bpt), tx2 = Math.floor(view.x2 / bpt);
-    const tz1 = Math.floor(view.z1 / bpt), tz2 = Math.floor(view.z2 / bpt);
+    const tz1 = Math.floor(view.z1 / tileHeightBlocks), tz2 = Math.floor(view.z2 / tileHeightBlocks);
     if ((tx2 - tx1 + 1) * (tz2 - tz1 + 1) > 400) return; // слишком далеко — не грузим
 
     const need = new Set<string>();
     for (let tx = tx1; tx <= tx2; tx++) for (let tz = tz1; tz <= tz2; tz++) {
       need.add(this.k(z, tx, tz));
-      this.load(z, tx, tz, bpt);
+      this.load(z, tx, tz, bpt, tileHeightBlocks);
     }
     // выгрузить невидимые
     for (const [key, s] of this.tiles) {
@@ -58,11 +88,13 @@ export class BluemapLayer {
 
   private k(z: number, tx: number, tz: number) { return `${z}/${tx}/${tz}`; }
 
-  private load(z: number, tx: number, tz: number, bpt: number) {
+  private load(z: number, tx: number, tz: number, bpt: number, tileHeightBlocks: number) {
     const key = this.k(z, tx, tz);
     if (this.tiles.has(key) || this.pending.has(key)) return;
+    const generation = this.generation;
     this.pending.add(key);
-    const url = this.cfg.baseUrl + this.cfg.tileTemplate
+    const prefix = this.cfg.tileTemplate.startsWith('/') ? '' : this.cfg.baseUrl;
+    const url = prefix + this.cfg.tileTemplate
       .replace('{world}', encodeURIComponent(this.world))
       .replace('{zoom}', String(z))
       .replace('{x}', String(tx))
@@ -71,12 +103,13 @@ export class BluemapLayer {
     img.crossOrigin = 'anonymous';
     img.onload = () => {
       this.pending.delete(key);
-      if (this.k(this.lastZ(), 0, 0) === '__stale__') return;
-      const tex = Texture.from(img);
+      if (generation !== this.generation || z !== this.zoom) return;
+      const source = this.cropMapHalf(img);
+      const tex = Texture.from(source);
       tex.source.scaleMode = 'linear';
       const s = new Sprite(tex);
-      s.position.set(tx * bpt, tz * bpt);
-      s.width = bpt; s.height = bpt;
+      s.position.set(tx * bpt, tz * tileHeightBlocks);
+      s.width = bpt; s.height = tileHeightBlocks;
       s.alpha = 0.9;
       this.container.addChild(s);
       this.tiles.set(key, s);
@@ -85,5 +118,15 @@ export class BluemapLayer {
     img.src = url;
   }
 
-  private lastZ() { return 0; }
+  private cropMapHalf(img: HTMLImageElement): HTMLCanvasElement {
+    const cv = document.createElement('canvas');
+    cv.width = img.naturalWidth;
+    // Bluemap отдаёт вертикальный spritesheet: карта находится сверху,
+    // нижняя половина содержит карту высот и в проект не попадает.
+    cv.height = Math.floor(img.naturalHeight / 2);
+    const ctx = cv.getContext('2d', { willReadFrequently: true })!;
+    ctx.drawImage(img, 0, 0, img.naturalWidth, cv.height,
+      0, 0, cv.width, cv.height);
+    return cv;
+  }
 }
