@@ -3,6 +3,7 @@ data/
 web/dist/
 *.log
 config.json
+.vscode/
 
 # Local tooling and temporary files
 .zcode/
