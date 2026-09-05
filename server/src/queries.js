@@ -197,6 +197,12 @@ function qualifyUserFilter(where, src) {
   return where.replace(/\buser\s+(IN|NOT IN)\s+\(/g, `${column} $1 (`);
 }
 
+function qualifyEventFilter(where, src) {
+  const alias = src === 'block' ? 'b' : 'c';
+  return where.replace(/(?<![.@])\b(user|wid|x|y|z|time|action|type)\b/g,
+    (_match, column) => `${alias}.${column}`);
+}
+
 export function queryEvents(store, q) {
   const { empty, plans, params } = buildTablePlans(store, q);
   if (empty || !plans || plans.length === 0) {
@@ -222,7 +228,7 @@ export function queryEvents(store, q) {
         LEFT JOIN co_world w ON w.id = b.wid
         LEFT JOIN co_material_map m ON m.id = b.type
         LEFT JOIN co_entity_map e ON e.id = b.type
-        WHERE ${qualifyUserFilter(p.where, p.src)}
+        WHERE ${qualifyEventFilter(p.where, p.src)}
         ORDER BY b.time DESC LIMIT ${limit}
       `;
     } else {
@@ -236,7 +242,7 @@ export function queryEvents(store, q) {
         LEFT JOIN co_user u ON u.id = c.user
         LEFT JOIN co_world w ON w.id = c.wid
         LEFT JOIN co_material_map m ON m.id = c.type
-        WHERE ${qualifyUserFilter(p.where, p.src)}
+        WHERE ${qualifyEventFilter(p.where, p.src)}
         ORDER BY c.time DESC LIMIT ${limit}
       `;
     }
@@ -254,7 +260,7 @@ export function queryEvents(store, q) {
           LEFT JOIN co_world w ON w.id = b.wid
           LEFT JOIN co_material_map m ON m.id = b.type
           LEFT JOIN co_entity_map e ON e.id = b.type
-          WHERE ${qualifyUserFilter(p.where, p.src)}
+          WHERE ${qualifyEventFilter(p.where, p.src)}
         `;
       } else {
         return `
@@ -267,7 +273,7 @@ export function queryEvents(store, q) {
           LEFT JOIN co_user u ON u.id = c.user
           LEFT JOIN co_world w ON w.id = c.wid
           LEFT JOIN co_material_map m ON m.id = c.type
-          WHERE ${qualifyUserFilter(p.where, p.src)}
+          WHERE ${qualifyEventFilter(p.where, p.src)}
         `;
       }
     });

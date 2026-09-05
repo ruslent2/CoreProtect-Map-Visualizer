@@ -102,3 +102,21 @@ test('queryEvents qualifies user filter when joining co_user', () => {
     store.close();
   }
 });
+
+test('queryEvents qualifies time filter when joining lookup tables', () => {
+  const store = createStore();
+  try {
+    store.getDb().prepare('INSERT INTO co_material_map VALUES (?, ?)').run(1, 'STONE');
+    store.getDb().prepare(`
+      INSERT INTO co_block (time, user, wid, x, y, z, type, action)
+      VALUES (?, 1, 1, 0, 64, 0, 1, 0)
+    `).run(100);
+
+    const result = queryEvents(store, { tFrom: 100, tTo: 100 });
+
+    assert.equal(result.rows.length, 1);
+    assert.equal(result.rows[0].time, 100);
+  } finally {
+    store.close();
+  }
+});
