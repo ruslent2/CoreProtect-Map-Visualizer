@@ -22,6 +22,29 @@ const MODE_LABELS: Record<ColorMode, string> = {
   time: 'Время',
 };
 
+function globSuggestionMatches(name: string, pattern: string, caseSensitive: boolean) {
+  // Без glob-символов подсказываем имена по префиксу. При наличии * или ?
+  // проверяем весь введённый шаблон так же, как backend.
+  const hasGlob = pattern.includes('*') || pattern.includes('?');
+  let source = '';
+  for (const ch of pattern) {
+    if (ch === '*') source += '.*';
+    else if (ch === '?') source += '.';
+    else source += ch.replace(/[\\^$+.()|{}[\]]/g, '\\$&');
+  }
+  if (!hasGlob) source += '.*';
+  try {
+    return new RegExp(`^${source}$`, caseSensitive ? '' : 'i').test(name);
+  } catch {
+    return false;
+  }
+}
+
+function splitPatternPrefix(line: string) {
+  const prefix = line.match(/^(?:!|\(\?i\))*/)?.[0] ?? '';
+  return { prefix, pattern: line.slice(prefix.length), caseSensitive: prefix.includes('(?i)') };
+}
+
 export function buildFilterPanel(
   root: HTMLElement, f: Filters, meta: MetaData, onChange: ChangeFn, onRefresh: () => void
 ) {
@@ -75,30 +98,127 @@ export function buildFilterPanel(
 
   // --- Игроки ---
   root.append(el(`<h3>Игроки</h3>`));
-  const userSel = makeMultiPicker(meta.users.map(u => ({
-    key: u.nick, label: u.nick,
-    color: rgbHex(uuidColor(u.uuid, u.nick)),
-  })), f.users, v => onChange({ users: v }));
-  const userExcl = makeExclToggle('usersExcl', f, onChange, 'Исключить выбранных');
-  root.append(userExcl, userSel);
+  const userPatterns = document.createElement('textarea');
+  userPatterns.className = 'pattern-input';
+  userPatterns.rows = 5;
+  userPatterns.placeholder = 'по одному шаблону на строку…';
+  userPatterns.value = f.users.join('\n');
+  userPatterns.title = 'Поддерживаются * и ?. ! в начале исключает шаблон. (?i) делает сопоставление чувствительным к регистру.';
+  const userPatternWrap = document.createElement('div');
+  userPatternWrap.className = 'pattern-autocomplete';
+  const suggestions = document.createElement('div');
+  suggestions.className = 'pattern-suggestions';
+  suggestions.hidden = true;
+  userPatternWrap.append(userPatterns, suggestions);
+  const commitUserPatterns = () => onChange({
+    users: userPatterns.value.split(/\r?\n/).map(s => s.trim()).filter(Boolean),
+  });
+  const hideSuggestions = () => { suggestions.hidden = true; suggestions.innerHTML = ''; };
+  const chooseSuggestion = (nick: string) => {
+    const lines = userPatterns.value.split(/\r?\n/);
+    const line = lines[lines.length - 1];
+    const { prefix } = splitPatternPrefix(line);
+    lines[lines.length - 1] = prefix + nick;
+    userPatterns.value = lines.join('\n');
+    hideSuggestions();
+    userPatterns.focus();
+    commitUserPatterns();
+  };
+  const updateSuggestions = () => {
+    const line = userPatterns.value.split(/\r?\n/).pop() ?? '';
+    const { prefix, pattern, caseSensitive } = splitPatternPrefix(line);
+    if (!pattern || !meta.users.length) { hideSuggestions(); return; }
+    const matches = meta.users
+      .map(u => u.nick)
+      .filter((nick): nick is string => Boolean(nick))
+      .filter(nick => globSuggestionMatches(nick, pattern, caseSensitive))
+      .slice(0, 12);
+    suggestions.innerHTML = '';
+    for (const nick of matches) {
+      const item = document.createElement('button');
+      item.type = 'button';
+      item.className = 'pattern-suggestion';
+      item.textContent = prefix + nick;
+      item.onmousedown = event => { event.preventDefault(); chooseSuggestion(nick); };
+      suggestions.append(item);
+    }
+    suggestions.hidden = matches.length === 0;
+  };
+  // Не пересобираем панель на каждый символ: это лишает textarea фокуса и
+  // делает Enter невозможным. Правила применяются после завершения ввода.
+  userPatterns.onchange = commitUserPatterns;
+  userPatterns.oninput = updateSuggestions;
+  userPatterns.onfocus = updateSuggestions;
+  userPatterns.onblur = () => { commitUserPatterns(); window.setTimeout(hideSuggestions, 150); };
+  root.append(userPatternWrap);
+  root.append(el(`<div class="tiny pattern-help">* — любые символы, ? — один символ, ! — исключить, (?i) — учитывать регистр</div>`));
+
+  // --- Материалы ---
+  root.append(el(`<h3>Материалы</h3>`));
+  const materialPatterns = document.createElement('textarea');
+  materialPatterns.className = 'pattern-input';
+  materialPatterns.rows = 5;
+  materialPatterns.placeholder = 'по одному шаблону на строку…';
+  materialPatterns.value = f.materials.join('\n');
+  materialPatterns.title = 'Поддерживаются * и ?. ! в начале исключает шаблон. (?i) делает сопоставление чувствительным к регистру.';
+  const materialPatternWrap = document.createElement('div');
+  materialPatternWrap.className = 'pattern-autocomplete';
+  const materialSuggestions = document.createElement('div');
+  materialSuggestions.className = 'pattern-suggestions';
+  materialSuggestions.hidden = true;
+  materialPatternWrap.append(materialPatterns, materialSuggestions);
+  const commitMaterialPatterns = () => onChange({
+    materials: materialPatterns.value.split(/\r?\n/).map(s => s.trim()).filter(Boolean),
+  });
+  const updateMaterialSuggestions = () => {
+    const line = materialPatterns.value.split(/\r?\n/).pop() ?? '';
+    const { prefix, pattern, caseSensitive } = splitPatternPrefix(line);
+    const matches = pattern
+      ? meta.materials.filter(m => globSuggestionMatches(m, pattern, caseSensitive)).slice(0, 12)
+      : [];
+    materialSuggestions.innerHTML = '';
+    for (const material of matches) {
+      const item = document.createElement('button');
+      item.type = 'button';
+      item.className = 'pattern-suggestion';
+      item.textContent = prefix + material;
+      item.onmousedown = event => {
+        event.preventDefault();
+        const lines = materialPatterns.value.split(/\r?\n/);
+        lines[lines.length - 1] = prefix + material;
+        materialPatterns.value = lines.join('\n');
+        materialSuggestions.hidden = true;
+        materialPatterns.focus();
+        commitMaterialPatterns();
+      };
+      materialSuggestions.append(item);
+    }
+    materialSuggestions.hidden = matches.length === 0;
+  };
+  materialPatterns.oninput = updateMaterialSuggestions;
+  materialPatterns.onfocus = updateMaterialSuggestions;
+  materialPatterns.onchange = commitMaterialPatterns;
+  materialPatterns.onblur = () => {
+    commitMaterialPatterns();
+    window.setTimeout(() => { materialSuggestions.hidden = true; }, 150);
+  };
+  root.append(materialPatternWrap);
+  root.append(el(`<div class="tiny pattern-help">* — любые символы, ? — один символ, ! — исключить, (?i) — учитывать регистр</div>`));
+  const matExcl = makeExclToggle('materialsExcl', f, onChange, 'Исключить выбранные');
+  root.append(matExcl);
 
   // --- Действия ---
   root.append(el(`<h3>Действия</h3>`));
-  const actSel = makeMultiPicker(meta.actions.map(a => {
+  const actionItems = meta.actions.map(a => {
     let key: [string, number] = ['block', 0];
     if (a.id.startsWith('container')) key = ['container', 0];
     else if (a.id.startsWith('item')) key = ['item', 0];
     else if (a.id === 'entity_kill') key = ['entity', 0];
     return { key: a.id, label: a.label, color: rgbHex(actionColor(key[0], key[1])) };
-  }), f.actions, v => onChange({ actions: v }));
+  });
+  const actSel = makeCheckboxPicker(actionItems, f.actions, v => onChange({ actions: v }));
   const actExcl = makeExclToggle('actionsExcl', f, onChange, 'Исключить выбранные');
   root.append(actExcl, actSel);
-
-  // --- Материалы ---
-  root.append(el(`<h3>Материалы</h3>`));
-  const matSel = makeMultiPicker(meta.materials.map(m => ({ key: m, label: m.replace('minecraft:', '') })), f.materials, v => onChange({ materials: v }));
-  const matExcl = makeExclToggle('materialsExcl', f, onChange, 'Исключить выбранные');
-  root.append(matExcl, matSel);
 
   // --- Область ---
   root.append(el(`<h3>Область</h3>`));
@@ -152,6 +272,47 @@ function makeMultiPicker(items: PickItem[], selected: string[], onSel: (v: strin
   search.oninput = () => render(search.value);
   render('');
   wrap.append(search, list);
+  return wrap;
+}
+
+function makeCheckboxPicker(items: PickItem[], selected: string[], onSel: (v: string[]) => void) {
+  const wrap = document.createElement('div');
+  wrap.className = 'checkbox-picker';
+
+  const allLabel = document.createElement('label');
+  allLabel.className = 'checkbox-item checkbox-all';
+  const all = document.createElement('input');
+  all.type = 'checkbox';
+  all.checked = items.length > 0 && items.every(item => selected.includes(item.key));
+  all.indeterminate = selected.length > 0 && !all.checked;
+  all.onchange = () => onSel(all.checked ? items.map(item => item.key) : []);
+  allLabel.append(all, document.createTextNode('Все действия'));
+  wrap.append(allLabel);
+
+  const list = document.createElement('div');
+  list.className = 'checkbox-list';
+  for (const item of items) {
+    const label = document.createElement('label');
+    label.className = 'checkbox-item';
+    const checkbox = document.createElement('input');
+    checkbox.type = 'checkbox';
+    checkbox.checked = selected.includes(item.key);
+    checkbox.onchange = () => onSel(
+      checkbox.checked
+        ? [...selected, item.key]
+        : selected.filter(value => value !== item.key),
+    );
+    label.append(checkbox);
+    if (item.color) {
+      const dot = document.createElement('span');
+      dot.className = 'dot';
+      dot.style.background = item.color;
+      label.append(dot);
+    }
+    label.append(document.createTextNode(item.label));
+    list.append(label);
+  }
+  wrap.append(list);
   return wrap;
 }
 

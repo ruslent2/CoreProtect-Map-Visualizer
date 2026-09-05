@@ -23,10 +23,66 @@ export function parseFilters(query) {
   const q = { ...query };
   for (const k of ['users', 'materials', 'actions']) {
     if (typeof q[k] === 'string' && q[k].trim()) {
-      q[k] = q[k].split(',').map(s => s.trim()).filter(Boolean);
+      q[k] = q[k].split(/[\n,]/).map(s => s.trim()).filter(Boolean);
     }
   }
   return q;
+}
+
+function globToRegExp(pattern, caseSensitive) {
+  let source = '';
+  for (const ch of pattern) {
+    if (ch === '*') source += '.*';
+    else if (ch === '?') source += '.';
+    else source += ch.replace(/[\\^$+.()|{}[\]]/g, '\\$&');
+  }
+  return new RegExp(`^${source}$`, caseSensitive ? '' : 'i');
+}
+
+function resolveUserIds(users, patterns) {
+  const rules = patterns.map(raw => {
+    let pattern = raw;
+    let include = true;
+    if (pattern.startsWith('!')) {
+      include = false;
+      pattern = pattern.slice(1);
+    }
+    let caseSensitive = false;
+    if (pattern.startsWith('(?i)')) {
+      caseSensitive = true;
+      pattern = pattern.slice(4);
+    }
+    return { include, regex: globToRegExp(pattern, caseSensitive) };
+  });
+  const hasIncludeRule = rules.some(r => r.include);
+  return users.filter(user => {
+    let matched = !hasIncludeRule;
+    for (const rule of rules) {
+      if (rule.regex.test(user.nick ?? '')) matched = rule.include;
+    }
+    return matched;
+  }).map(user => user.id);
+}
+
+function resolvePatternIds(nameById, patterns) {
+  const names = Array.from(nameById, ([id, name]) => ({ id, name }));
+  const rules = patterns.map(raw => {
+    let pattern = raw;
+    let include = true;
+    if (pattern.startsWith('!')) {
+      include = false;
+      pattern = pattern.slice(1);
+    }
+    const caseSensitive = pattern.startsWith('(?i)');
+    if (caseSensitive) pattern = pattern.slice(4);
+    return { include, regex: globToRegExp(pattern, caseSensitive) };
+  });
+  const hasIncludeRule = rules.some(r => r.include);
+  return names.filter(({ name }) => {
+    let matched = !hasIncludeRule;
+    for (const rule of rules) if (rule.regex.test(name ?? '')) matched = rule.include;
+    return matched;
+  }).map(({ id }) => id);
 }
 
 // Построение планов запроса для каждой таблицы событий
@@ -77,16 +133,14 @@ function buildTablePlans(store, q) {
     }
   }
 
-  // Маппинг пользователей в ID
+  // Маппинг пользователей по glob-шаблонам: последнее совпавшее правило побеждает.
   let userIds = null;
   if (q.users?.length) {
-    userIds = [];
-    for (const u of q.users) {
-      const id = maps.userNameToId.get(u.toLowerCase());
-      if (id != null) userIds.push(id);
-    }
-    // Если пользователь искался, но ни одного не найдено
-    if (userIds.length === 0 && !q.usersExcl) {
+    const knownUsers = maps.userIdToUser
+      ? Array.from(maps.userIdToUser.values())
+      : Array.from(maps.userNameToId.entries()).map(([nick, id]) => ({ nick, id }));
+    userIds = resolveUserIds(knownUsers, q.users);
+    if (userIds.length === 0) {
       return { empty: true };
     }
   }
@@ -95,15 +149,8 @@ function buildTablePlans(store, q) {
   let materialIds = null;
   let entityIds = null;
   if (q.materials?.length) {
-    materialIds = [];
-    entityIds = [];
-    for (const m of q.materials) {
-      const lower = m.toLowerCase();
-      const mid = maps.materialNameToId.get(lower);
-      if (mid != null) materialIds.push(mid);
-      const eid = maps.entityNameToId.get(lower);
-      if (eid != null) entityIds.push(eid);
-    }
+    materialIds = resolvePatternIds(maps.materialIdToName, q.materials);
+    entityIds = resolvePatternIds(maps.entityIdToName, q.materials);
     if (materialIds.length === 0 && entityIds.length === 0 && !q.materialsExcl) {
       return { empty: true };
     }
@@ -140,8 +187,7 @@ function buildTablePlans(store, q) {
   }
 
   if (userIds && userIds.length > 0) {
-    const op = q.usersExcl ? 'NOT IN' : 'IN';
-    commonConds.push(`user ${op} (${userIds.join(',')})`);
+    commonConds.push(`user IN (${userIds.join(',')})`);
   }
 
   const plans = [];

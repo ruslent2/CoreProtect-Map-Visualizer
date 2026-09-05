@@ -34,7 +34,7 @@ export function filtersToQuery(f: Filters, extra: Record<string, string> = {}): 
     p.set('x1', String(Math.floor(f.bbox.x1))); p.set('x2', String(Math.ceil(f.bbox.x2)));
     p.set('z1', String(Math.floor(f.bbox.z1))); p.set('z2', String(Math.ceil(f.bbox.z2)));
   }
-  if (f.users.length) { p.set('users', f.users.join(',')); if (f.usersExcl) p.set('usersExcl', '1'); }
+  if (f.users.length) { p.set('users', f.users.join('\n')); }
   if (f.actions.length) { p.set('actions', f.actions.join(',')); if (f.actionsExcl) p.set('actionsExcl', '1'); }
   if (f.materials.length) { p.set('materials', f.materials.join(',')); if (f.materialsExcl) p.set('materialsExcl', '1'); }
   if (f.tFrom != null) p.set('tFrom', String(f.tFrom));
