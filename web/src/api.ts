@@ -1,56 +1,23 @@
-import type { Filters } from './state';
+import type { BBox, Filters } from './state';
 import { filtersToQuery } from './state';
 
-export interface CpEvent {
-  src: string; rowid_src: number; time: number;
-  nick: string | null; uuid: string | null;
-  world: string; x: number; y: number; z: number;
-  material: string | null; amount: number | null;
-  action: number; rolled_back: number;
-}
+export interface CpEvent { src: string; rowid_src: number; time: number; nick: string | null; uuid: string | null; world: string; x: number; y: number; z: number; material: string | null; amount: number | null; action: number; rolled_back: number; }
+export interface Chunk { cx: number; cz: number; cnt: number; tmin: number; tmax: number; users: number; dominant: { nick: string | null; uuid: string | null; src: string; action: number } | null; }
+export interface SourceSnapshot { block: number; container: number; item: number; }
+export interface CoreProtectTilesConfig { tileSize: number; maxConcurrentRequests: number; detailPageSize: number; maxTextureSize: number; }
+export interface ApiConfig { defaultLimit: number; coreProtectTiles: CoreProtectTilesConfig; bluemap: Record<string, unknown>; }
+export interface QueryPlanResult { strategy: 'all' | 'overview-and-detail'; threshold: number; countAtLeast: number; totalExact: boolean; total?: number; bounds: BBox | null; snapshot: SourceSnapshot; elapsedMs: number; }
+export interface QueryPageResult { count: number; hasMore: boolean; nextCursor: string | null; snapshot: SourceSnapshot; truncated: boolean; elapsedMs: number; events: CpEvent[]; bbox: BBox | null; }
+export interface AggregateResult { chunks: Chunk[]; occupiedTiles: { tx: number; tz: number; cnt: number; tmin: number; tmax: number }[]; total: number; temporal: { tmin: number; tmax: number; users: number } | null; elapsedMs: number; snapshot: SourceSnapshot; bbox: BBox | null; }
+export interface MetaData { worlds: { id: number; world: string }[]; users: { id: number; nick: string; uuid: string | null }[]; materials: string[]; actions: { id: string; label: string }[]; }
 
-export interface QueryResult {
-  count: number; truncated: boolean; elapsedMs: number;
-  events: CpEvent[]; bbox: { x1: number; x2: number; z1: number; z2: number } | null;
-}
-
-export interface Chunk {
-  cx: number; cz: number; cnt: number; tmin: number; tmax: number; users: number;
-  dominant: { nick: string | null; uuid: string | null; src: string; action: number } | null;
-}
-
-export async function apiQuery(f: Filters): Promise<QueryResult> {
-  const r = await fetch(`/api/query?${filtersToQuery(f)}`);
-  if (!r.ok) throw new Error(await r.text());
-  return r.json();
-}
-
-export async function apiAggregate(f: Filters): Promise<{ chunks: Chunk[]; elapsedMs: number }> {
-  const r = await fetch(`/api/aggregate?${filtersToQuery(f)}`);
-  if (!r.ok) throw new Error(await r.text());
-  return r.json();
-}
-
-export async function apiEvent(src: string, rowid: number) {
-  const r = await fetch(`/api/event/${src}/${rowid}`);
-  if (!r.ok) throw new Error(await r.text());
-  return r.json() as Promise<{
-    event: CpEvent;
-    nearby: (CpEvent & { abs?: never })[];
-  }>;
-}
-
-export async function apiMeta() {
-  const r = await fetch('/api/meta');
-  return r.json() as Promise<{
-    worlds: { id: number; world: string }[];
-    users: { id: number; nick: string; uuid: string | null }[];
-    materials: string[];
-    actions: { id: string; label: string }[];
-  }>;
-}
-
-export async function apiSyncStatus() {
-  const r = await fetch('/api/sync/status');
-  return r.json();
-}
+async function getJson<T>(path: string, signal?: AbortSignal, method = 'GET'): Promise<T> { const response = await fetch(path, { signal, method }); if (!response.ok) throw new Error((await response.text()) || `${response.status} ${response.statusText}`); return response.json() as Promise<T>; }
+function query(filters: Filters, extra: Record<string, string> = {}) { return filtersToQuery(filters, extra); }
+export function apiConfig(signal?: AbortSignal) { return getJson<ApiConfig>('/api/config', signal); }
+export function apiMeta(signal?: AbortSignal) { return getJson<MetaData>('/api/meta', signal); }
+export function apiRefreshMeta(signal?: AbortSignal) { return getJson<MetaData>('/api/meta/refresh', signal, 'POST'); }
+export function apiQueryPlan(filters: Filters, snapshot?: SourceSnapshot, signal?: AbortSignal) { return getJson<QueryPlanResult>(`/api/query-plan?${query(filters, snapshot ? { snapshot: JSON.stringify(snapshot) } : {})}`, signal); }
+export function apiQueryPage(filters: Filters, options: { snapshot: SourceSnapshot; cursor?: string | null; pageSize: number; tile?: { xMin: number; xMaxExclusive: number; zMin: number; zMaxExclusive: number }; }, signal?: AbortSignal) { const extra: Record<string, string> = { snapshot: JSON.stringify(options.snapshot), pageSize: String(options.pageSize) }; if (options.cursor) extra.cursor = options.cursor; if (options.tile) Object.assign(extra, Object.fromEntries(Object.entries(options.tile).map(([key, value]) => [key, String(value)]))); return getJson<QueryPageResult>(`/api/query?${query(filters, extra)}`, signal); }
+export function apiAggregate(filters: Filters, snapshot: SourceSnapshot, tileSize: number, signal?: AbortSignal) { return getJson<AggregateResult>(`/api/aggregate?${query(filters, { snapshot: JSON.stringify(snapshot), tileSize: String(tileSize) })}`, signal); }
+export function apiEvent(src: string, rowid: number, signal?: AbortSignal) { return getJson<{ event: CpEvent; nearby: CpEvent[] }>(`/api/event/${encodeURIComponent(src)}/${rowid}`, signal); }
+export function apiSyncStatus(signal?: AbortSignal) { return getJson<unknown>('/api/sync/status', signal); }

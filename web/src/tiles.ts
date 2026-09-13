@@ -18,6 +18,11 @@ export interface BluemapConfig {
 
 interface TileKey { z: number; tx: number; tz: number }
 
+/** Keeps UI input and sprites inside Pixi's supported alpha range. */
+export function normalizeBluemapOpacity(alpha: number): number {
+  return Number.isFinite(alpha) ? Math.min(1, Math.max(0, alpha)) : 0.9;
+}
+
 export class BluemapLayer {
   container = new Container();
   private cfg: BluemapConfig;
@@ -27,6 +32,7 @@ export class BluemapLayer {
   private lastView = '';
   private tiles = new Map<string, Sprite>();
   private pending = new Set<string>();
+  private opacity = 0.9;
 
   constructor(cfg: BluemapConfig) {
     this.cfg = cfg;
@@ -45,6 +51,12 @@ export class BluemapLayer {
     this.lastView = '';
     for (const s of this.tiles.values()) s.destroy({ texture: true, textureSource: true });
     this.tiles.clear();
+  }
+
+  /** Updates loaded and future BlueMap tiles without changing the requested view. */
+  setOpacity(alpha: number) {
+    this.opacity = normalizeBluemapOpacity(alpha);
+    for (const sprite of this.tiles.values()) sprite.alpha = this.opacity;
   }
 
   // Обновить видимые тайлы под текущую камеру (в блоках)
@@ -110,7 +122,7 @@ export class BluemapLayer {
       const s = new Sprite(tex);
       s.position.set(tx * bpt, tz * tileHeightBlocks);
       s.width = bpt; s.height = tileHeightBlocks;
-      s.alpha = 0.9;
+      s.alpha = this.opacity;
       this.container.addChild(s);
       this.tiles.set(key, s);
     };

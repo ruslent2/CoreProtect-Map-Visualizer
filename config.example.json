@@ -14,5 +14,11 @@
     "maxZoom": 3
   },
   "defaultLimit": 50000,
-  "syncIntervalMs": 30000
+  "syncIntervalMs": 30000,
+  "coreProtectTiles": {
+    "tileSize": 256,
+    "maxConcurrentRequests": 2,
+    "detailPageSize": 5000,
+    "maxTextureSize": 512
+  }
 }

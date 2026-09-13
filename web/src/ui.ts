@@ -1,12 +1,10 @@
-import type { Filters } from './state';
+import type { Filters, TimeSelection } from './state';
+import { epochSecondsToLocalDateTime, localDateTimeToEpochSeconds, presetTimeSelection } from './state';
 import type { ColorMode } from './colors';
 import { uuidColor, actionColor, rgbHex, ACTION_LABELS } from './colors';
 
-// Временная точка отсчёта: старая БД больше не пополняется.
-// 2026-07-17 00:00:00 по локальному времени браузера.
-const FILTER_NOW = new Date(2026, 6, 17, 0, 0, 0).getTime() / 1000;
-
 type ChangeFn = (patch: Partial<Filters>) => void;
+export interface ScanControls { status: string; error?: string | null; canShowAll: boolean; canStop: boolean; canContinueDetails: boolean; bluemapOpacity: number; lodMarkersVisible: boolean; onBluemapOpacity(alpha: number): void; onLodMarkersVisible(enabled: boolean): void; onApply(): void; onStop(): void; onContinueDetails(): void; onShowAll(): void; }
 
 export interface MetaData {
   worlds: { id: number; world: string }[];
@@ -46,7 +44,7 @@ function splitPatternPrefix(line: string) {
 }
 
 export function buildFilterPanel(
-  root: HTMLElement, f: Filters, meta: MetaData, onChange: ChangeFn, onRefresh: () => void
+  root: HTMLElement, f: Filters, time: TimeSelection, meta: MetaData, onChange: ChangeFn, onTimeChange: (time: TimeSelection) => void, controls: ScanControls
 ) {
   root.innerHTML = '';
   const el = (html: string) => {
@@ -76,19 +74,41 @@ export function buildFilterPanel(
   };
   root.append(mixRow);
 
+  // Локальная настройка подложки: не меняет фильтр и не запускает запросы.
+  root.append(el(`<h3>Подложка BlueMap</h3>`));
+  const opacityRow = el(`<div class="row opacity-control"><span class="tiny">Прозрачность</span><input id="bluemap-opacity" type="range" min="0" max="100" value="${Math.round(controls.bluemapOpacity * 100)}"><span class="tiny" id="bluemap-opacity-value">${Math.round(controls.bluemapOpacity * 100)}%</span></div>`);
+  opacityRow.querySelector<HTMLInputElement>('#bluemap-opacity')!.oninput = event => {
+    const value = Number((event.target as HTMLInputElement).value) / 100;
+    opacityRow.querySelector('#bluemap-opacity-value')!.textContent = `${Math.round(value * 100)}%`;
+    controls.onBluemapOpacity(value);
+  };
+  root.append(opacityRow);
+  const lodMarkersRow = el(`<label class="row lod-markers-control"><input id="lod-markers-visible" type="checkbox" ${controls.lodMarkersVisible ? 'checked' : ''}><span class="tiny">Показывать LOD-маркеры</span></label>`);
+  lodMarkersRow.querySelector<HTMLInputElement>('#lod-markers-visible')!.onchange = event => {
+    controls.onLodMarkersVisible((event.target as HTMLInputElement).checked);
+  };
+  root.append(lodMarkersRow);
+
   // --- Время ---
   root.append(el(`<h3>Время</h3>`));
+  const isPreset = (hours: number) => time.mode === 'range' && time.from != null && time.to != null && time.to - time.from === hours * 3600;
   const timeRow = el(`<div class="row">
-    <button class="t-preset" data-h="24">24ч</button>
-    <button class="t-preset" data-h="168">7д</button>
-    <button class="t-preset" data-h="720">30д</button>
-    <button id="t-clear" class="excl-toggle ${f.tFrom || f.tTo ? 'on' : ''}">всё время</button>
+    <button class="t-preset ${isPreset(6) ? 'active' : ''}" data-h="6">6ч</button>
+    <button class="t-preset ${isPreset(24) ? 'active' : ''}" data-h="24">24ч</button>
+    <button class="t-preset ${isPreset(168) ? 'active' : ''}" data-h="168">7д</button>
+    <button class="t-preset ${isPreset(720) ? 'active' : ''}" data-h="720">30д</button>
+    <button id="t-clear" class="excl-toggle ${time.mode === 'all' ? 'on' : ''}">Всё время</button>
   </div>`);
   timeRow.querySelectorAll<HTMLButtonElement>('.t-preset').forEach(b => {
-    b.onclick = () => onChange({ tTo: FILTER_NOW, tFrom: FILTER_NOW - Number(b.dataset.h) * 3600 });
+    b.onclick = () => onTimeChange(presetTimeSelection((Number(b.dataset.h) === 6 ? 'last6Hours' : Number(b.dataset.h) === 24 ? 'last24Hours' : Number(b.dataset.h) === 168 ? 'last7Days' : 'last30Days'), Math.floor(Date.now() / 1000)));
   });
-  (timeRow.querySelector('#t-clear') as HTMLButtonElement).onclick = () => onChange({ tFrom: null, tTo: null });
+  (timeRow.querySelector('#t-clear') as HTMLButtonElement).onclick = () => onTimeChange({ mode: 'all', from: null, to: null });
   root.append(timeRow);
+  const timeInputs = el(`<div class="time-inputs"><input id="time-from" type="datetime-local" step="1" value="${epochSecondsToLocalDateTime(time.from) ?? ''}"><input id="time-to" type="datetime-local" step="1" value="${epochSecondsToLocalDateTime(time.to) ?? ''}"></div>`);
+  const updateTime = () => { const from = localDateTimeToEpochSeconds((timeInputs.querySelector('#time-from') as HTMLInputElement).value || null), to = localDateTimeToEpochSeconds((timeInputs.querySelector('#time-to') as HTMLInputElement).value || null); onTimeChange({ mode: 'range', from, to }); };
+  timeInputs.querySelectorAll('input').forEach(input => input.addEventListener('change', updateTime));
+  root.append(timeInputs);
+  if (controls.error) root.append(el(`<div class="time-error">${controls.error}</div>`));
 
   // --- Уровень Y ---
   root.append(el(`<h3>Уровень Y (пусто = все, проекция сверху)</h3>`));
@@ -226,8 +246,12 @@ export function buildFilterPanel(
   (bboxRow.querySelector('#bbox-clear') as HTMLButtonElement).onclick = () => onChange({ bbox: null });
   root.append(bboxRow);
 
-  root.append(el(`<div class="row" style="margin-top:16px"><button class="primary" id="refresh">Обновить</button></div>`));
-  (root.querySelector('#refresh') as HTMLButtonElement).onclick = onRefresh;
+  const scanRow = el(`<div class="scan-controls"><div class="tiny">${controls.status}</div><div class="row"><button class="primary" id="refresh">Обновить данные</button>${controls.canShowAll ? '<button id="show-all">Показать все результаты</button>' : ''}${controls.canContinueDetails ? '<button id="continue-details">Продолжить детализацию</button>' : ''}${controls.canStop ? '<button id="stop">Остановить</button>' : ''}</div></div>`);
+  (scanRow.querySelector('#refresh') as HTMLButtonElement).onclick = controls.onApply;
+  (scanRow.querySelector('#show-all') as HTMLButtonElement | null)?.addEventListener('click', controls.onShowAll);
+  (scanRow.querySelector('#continue-details') as HTMLButtonElement | null)?.addEventListener('click', controls.onContinueDetails);
+  (scanRow.querySelector('#stop') as HTMLButtonElement | null)?.addEventListener('click', controls.onStop);
+  root.append(scanRow);
 
   // чипы выбранных
   renderChips(root, f, onChange);

@@ -4,67 +4,23 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { Store } from './db.js';
-import { parseFilters, queryEvents, aggregateChunks, getEvent, nearbyByUser, bboxOf, bboxOfChunks } from './queries.js';
+import { parseFilters, parseSnapshot, parseCursor, queryEvents, queryPlan, aggregateChunks, getEvent, nearbyByUser, bboxOf, bboxOfChunks, encodeCursor } from './queries.js';
+import { normalizeConfig } from './config.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const rootDir = path.resolve(__dirname, '../..');
-
-const cfgPath = process.argv[2] || path.join(rootDir, 'config.json');
+const defaultRootDir = path.resolve(__dirname, '../..');
 
 function log(level, message, details) {
   const suffix = details === undefined ? '' : ` ${JSON.stringify(details)}`;
   console[level](`[${new Date().toISOString()}] [${level.toUpperCase()}] ${message}${suffix}`);
 }
 
-process.on('uncaughtException', (error) => {
-  log('error', 'Необработанная ошибка (uncaughtException). Backend будет остановлен.', {
-    name: error.name,
-    message: error.message,
-    stack: error.stack,
-  });
-  process.exitCode = 1;
-});
-
-process.on('unhandledRejection', (reason) => {
-  const error = reason instanceof Error ? reason : new Error(String(reason));
-  log('error', 'Необработанное отклонение Promise (unhandledRejection).', {
-    message: error.message,
-    stack: error.stack,
-  });
-});
-
-log('log', 'Запуск backend CoreProtect Map Visualizer.', {
-  pid: process.pid,
-  node: process.version,
-  cwd: process.cwd(),
-  config: cfgPath,
-});
-
-if (!fs.existsSync(cfgPath)) {
-  log('error', `Конфиг не найден: ${cfgPath}. Скопируйте config.example.json → config.json.`);
-  process.exit(1);
-}
-let cfg;
-try {
-  cfg = JSON.parse(fs.readFileSync(cfgPath, 'utf8'));
-  log('log', 'Конфигурация загружена.', { host: cfg.host, port: cfg.port, databasePath: cfg.databasePath });
-} catch (error) {
-  log('error', 'Не удалось прочитать или разобрать конфигурацию.', { message: error.message, stack: error.stack });
-  process.exit(1);
-}
-
-const store = new Store(cfg, rootDir);
-try {
-  store.open();
-  log('log', 'CoreProtect DB подключена.', { databasePath: store.dbPath });
-} catch (error) {
-  log('error', 'Ошибка открытия базы данных. Сервер продолжит запуск, запросы будут сообщать об ошибке.', {
-    message: error.message,
-    stack: error.stack,
-  });
-}
-
-const app = Fastify({ logger: false });
+/** Builds the backend without opening a listener, allowing isolated endpoint tests. */
+export async function buildApp({ store, cfg, rootDir = defaultRootDir } = {}) {
+  const normalizedCfg = normalizeConfig(cfg);
+  if (!store) throw new Error('buildApp requires a store');
+  cfg = normalizedCfg;
+  const app = Fastify({ logger: false });
 
 app.addHook('onRequest', (req, reply, done) => {
   req.cpmvStartedAt = performance.now();
@@ -109,7 +65,8 @@ app.get('/api/meta', async () => {
 
 app.get('/api/config', async () => ({
   bluemap: cfg.bluemap ?? { enabled: false },
-  defaultLimit: cfg.defaultLimit ?? 50000,
+  defaultLimit: cfg.defaultLimit,
+  coreProtectTiles: cfg.coreProtectTiles,
 }));
 
 // Прокси Bluemap нужен, потому что внешний сервер не отдаёт CORS-заголовок.
@@ -143,14 +100,36 @@ app.post('/api/sync/start', async () => {
   return store.status;
 });
 
+app.post('/api/meta/refresh', async (_req, reply) => {
+  try {
+    store.refreshMeta();
+    return store.getMeta();
+  } catch (error) {
+    log('error', 'Ошибка обновления метаданных.', { message: error.message, stack: error.stack });
+    return reply.code(500).send({ error: 'metadata refresh failed', detail: error.message });
+  }
+});
+
 app.get('/api/query', async (req) => {
   try {
     const q = parseFilters(req.query);
-    const res = queryEvents(store, q);
+    const snapshot = parseSnapshot(req.query.snapshot);
+    const cursor = parseCursor(req.query.cursor);
+    const res = queryEvents(store, q, snapshot, cursor);
     log('log', 'Запрос событий завершён.', { count: res.rows.length, elapsedMs: res.elapsed, truncated: res.truncated });
-    return { count: res.rows.length, truncated: res.truncated, elapsedMs: res.elapsed, events: res.rows, bbox: bboxOf(res.rows) };
+    return { count: res.rows.length, hasMore: res.hasMore, nextCursor: res.hasMore && res.rows.length ? encodeCursor(res.rows.at(-1)) : null, snapshot: res.snapshot, truncated: res.truncated, elapsedMs: res.elapsed, events: res.rows, bbox: bboxOf(res.rows) };
   } catch (error) {
     log('error', 'Ошибка запроса событий.', { message: error.message, stack: error.stack, query: req.query });
+    throw error;
+  }
+});
+
+app.get('/api/query-plan', async (req) => {
+  try {
+    const q = parseFilters(req.query);
+    return queryPlan(store, q, parseSnapshot(req.query.snapshot));
+  } catch (error) {
+    log('error', 'Ошибка плана запроса.', { message: error.message, query: req.query });
     throw error;
   }
 });
@@ -158,7 +137,8 @@ app.get('/api/query', async (req) => {
 app.get('/api/aggregate', async (req) => {
   try {
     const q = parseFilters(req.query);
-    const res = aggregateChunks(store, q);
+    const snapshot = parseSnapshot(req.query.snapshot);
+    const res = aggregateChunks(store, q, snapshot, q.tileSize ?? cfg.coreProtectTiles.tileSize);
     log('log', 'Агрегация событий завершена.', { chunks: res.chunks.length, elapsedMs: res.elapsedMs });
     return { ...res, bbox: bboxOfChunks(res.chunks) };
   } catch (error) {
@@ -185,10 +165,36 @@ if (fs.existsSync(distDir)) {
   });
 }
 
-app.listen({ port: cfg.port, host: cfg.host }).then(() => {
-  log('log', `CPMV server запущен: http://${cfg.host}:${cfg.port}`);
-  log('log', `CoreProtect DB: ${store.dbPath}`);
-}).catch((error) => {
-  log('error', 'Backend не смог запуститься.', { message: error.message, stack: error.stack });
-  process.exitCode = 1;
-});
+  return app;
+}
+
+const isDirectEntryPoint = process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url);
+
+if (isDirectEntryPoint) {
+  const cfgPath = process.argv[2] || path.join(defaultRootDir, 'config.json');
+  process.on('uncaughtException', (error) => {
+    log('error', 'Необработанная ошибка (uncaughtException). Backend будет остановлен.', error);
+    process.exitCode = 1;
+  });
+  process.on('unhandledRejection', (reason) => log('error', 'Необработанное отклонение Promise (unhandledRejection).', reason));
+
+  if (!fs.existsSync(cfgPath)) {
+    log('error', `Конфиг не найден: ${cfgPath}. Скопируйте config.example.json → config.json.`);
+    process.exitCode = 1;
+  } else {
+    try {
+      const cfg = normalizeConfig(JSON.parse(fs.readFileSync(cfgPath, 'utf8')));
+      const store = new Store(cfg, defaultRootDir);
+      try { store.open(); } catch (error) { log('error', 'Ошибка открытия базы данных.', { message: error.message, stack: error.stack }); }
+      buildApp({ store, cfg }).then(app => app.listen({ port: cfg.port, host: cfg.host })).then(() => {
+        log('log', `CPMV server запущен: http://${cfg.host}:${cfg.port}`);
+      }).catch(error => {
+        log('error', 'Backend не смог запуститься.', { message: error.message, stack: error.stack });
+        process.exitCode = 1;
+      });
+    } catch (error) {
+      log('error', 'Не удалось прочитать или разобрать конфигурацию.', { message: error.message, stack: error.stack });
+      process.exitCode = 1;
+    }
+  }
+}
