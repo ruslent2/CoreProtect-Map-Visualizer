@@ -1,7 +1,7 @@
-// Цветовая система с приоритетами режимов.
-// Главный цвет определяется активным режимом окрашивания;
-// вспомогательные измерения подмешиваются к нему (оттенок) и
-// кодируются яркостью. Смешение — в HSL.
+// Система кольорів із пріоритетами режимів.
+// Основний колір визначається активним режимом забарвлення;
+// допоміжні виміри домішуються до нього (відтінком) і
+// кодуються яскравістю. Змішування — у HSL.
 
 export type ColorMode = 'user' | 'action' | 'material' | 'time';
 
@@ -12,17 +12,18 @@ export interface EventLike {
 }
 
 export const ACTION_LABELS: Record<string, string> = {
-  'block:0': 'Разрушение', 'block:1': 'Установка', 'block:2': 'Взаимодействие', 'block:3': 'Прочее',
-  'container:0': 'Изъято из контейнера', 'container:1': 'Помещено в контейнер',
-  'item:0': 'Выброс предмета', 'item:1': 'Подбор предмета', 'item:2': 'Метание предмета',
-  'entity:0': 'Убийство сущности',
+  'block:0': 'Руйнування', 'block:1': 'Встановлення', 'block:2': 'Взаємодія', 'block:3': 'Інше',
+  'container:0': 'Вилучено з контейнера', 'container:1': 'Поміщено до контейнера',
+  'item:0': 'Викидання предмета', 'item:1': 'Підбирання предмета', 'item:2': 'Кидання предмета',
+  'entity:0': 'Вбивство сутності',
 };
 
 function rgbHexNum(n: number): [number, number, number] {
   return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
 }
 
-// Палитра indexed-цветов Minecraft (как для имён/locator bar), порядок как в игре
+// Палітра індексованих кольорів Minecraft (як для імен / панелі локатора), порядок як у грі
+// переробити з https://ru.minecraft.wiki/w/%D0%9A%D0%B0%D0%BB%D1%8C%D0%BA%D1%83%D0%BB%D1%8F%D1%82%D0%BE%D1%80%D1%8B/UUID
 const MC_PALETTE: [number, number, number][] = [
   0x00AAAA, 0x5555FF, 0xFF55FF, 0x00FFAA, 0xFF5555, 0xFFFF55,
   0x00AA00, 0xAAAAAA, 0x55FFFF, 0xAA00AA, 0xAA0000, 0xFFAA00,
@@ -37,8 +38,9 @@ function javaHash(s: string): number {
   return h;
 }
 
-// UUID → цвет, как в игре (имена на табличках / locator bar):
-// floor(hash(uuid) / 2^32) по модулю длины палитры, с поправкой на знак
+// UUID → колір, як у грі (імена на табличках / панелі локатора):
+// floor(hash(uuid) / 2^32) за модулем довжини палітри, з поправкою на знак
+// переробити з https://ru.minecraft.wiki/w/%D0%9A%D0%B0%D0%BB%D1%8C%D0%BA%D1%83%D0%BB%D1%8F%D1%82%D0%BE%D1%80%D1%8B/UUID
 export function uuidColor(uuid: string | null, nick: string | null): [number, number, number] {
   const key = uuid || nick || '#unknown';
   let i = Math.floor(javaHash(key) / 0x100000000) % MC_PALETTE.length;
@@ -47,16 +49,16 @@ export function uuidColor(uuid: string | null, nick: string | null): [number, nu
 }
 
 const ACTION_COLORS: Record<string, [number, number, number]> = Object.fromEntries([
-  ['block:0', 0xE53935], // break — красный
-  ['block:1', 0x43A047], // place — зелёный
-  ['block:2', 0xFDD835], // interact — жёлтый
-  ['block:3', 0xFB8C00], // прочее — оранжевый
-  ['container:0', 0x1E88E5], // изъятие — синий
-  ['container:1', 0x00ACC1], // помещение — циан
-  ['item:0', 0x8E24AA], // выброс
-  ['item:1', 0x5E35B1], // подбор
-  ['item:2', 0x3949AB], // метание
-  ['entity:0', 0xD81B60], // убийство
+  ['block:0', 0xE53935], // руйнування — червоний
+  ['block:1', 0x43A047], // встановлення — зелений
+  ['block:2', 0xFDD835], // взаємодія — жовтий
+  ['block:3', 0xFB8C00], // інше — помаранчевий
+  ['container:0', 0x1E88E5], // вилучення — синій
+  ['container:1', 0x00ACC1], // поміщення — блакитний
+  ['item:0', 0x8E24AA], // викидання
+  ['item:1', 0x5E35B1], // підбирання
+  ['item:2', 0x3949AB], // кидання
+  ['entity:0', 0xD81B60], // вбивство
 ].map(([k, v]) => [k, rgbHexNum(v as number)]));
 
 export function actionColor(src: string, action: number): [number, number, number] {
@@ -69,14 +71,14 @@ export function materialColor(material: string | null): [number, number, number]
   return hslToRgb(hue, 0.75, 0.55);
 }
 
-// Градиент времени: свежие — тёплые, старые — холодные
+// Градієнт часу: нові — теплі, старі — холодні
 export function timeColor(t: number, tMin: number, tMax: number): [number, number, number] {
   const span = Math.max(1, tMax - tMin);
-  const k = 1 - Math.min(1, Math.max(0, (t - tMin) / span)); // 1 = свежее
+  const k = 1 - Math.min(1, Math.max(0, (t - tMin) / span)); // 1 = новіше
   return hslToRgb(220 + k * (-220 - -0), 0.85, 0.4 + k * 0.25);
 }
 
-// --- HSL утилиты ---
+// --- Утиліти HSL ---
 export function rgbToHsl(r: number, g: number, b: number): [number, number, number] {
   r /= 255; g /= 255; b /= 255;
   const max = Math.max(r, g, b), min = Math.min(r, g, b);
@@ -114,13 +116,13 @@ function hueMix(h1: number, h2: number, k: number): number {
 
 export interface ColorContext {
   mode: ColorMode;
-  mix: number;          // 0..0.5 — доля подмеса вторичного измерения
+  mix: number;          // 0..0.5 — частка домішування вторинного виміру
   tMin: number; tMax: number;
 }
 
-// Полный расчёт цвета события по приоритетам режима.
-// Главный цвет — режим; вторичный — подмес оттенком; время — яркостью
-// (кроме режима time, где время — главный, а вторичным идёт действие).
+// Повний розрахунок кольору події за пріоритетами режиму.
+// Основний колір — режим; вторинний — домішування відтінком; час — яскравістю
+// (крім режиму time, де основним є час, а вторинною — дія).
 export function eventColor(e: EventLike, ctx: ColorContext): [number, number, number] {
   const secColor = ctx.mode === 'time'
     ? actionColor(e.src, e.action)
@@ -135,7 +137,7 @@ export function eventColor(e: EventLike, ctx: ColorContext): [number, number, nu
   const [ph, ps, pl] = rgbToHsl(...primary);
   const [sh] = rgbToHsl(...secColor);
   const h = hueMix(ph, sh, ctx.mix);
-  // давность → яркость: свежее ярче
+  // Давність → яскравість: новіші події яскравіші
   const span = Math.max(1, ctx.tMax - ctx.tMin);
   const recency = 1 - Math.min(1, Math.max(0, (e.time - ctx.tMin) / span));
   const l = Math.min(0.85, Math.max(0.3, 0.45 + recency * 0.35));

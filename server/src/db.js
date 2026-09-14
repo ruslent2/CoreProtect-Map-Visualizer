@@ -29,16 +29,16 @@ export function toStr(v) {
 }
 
 export const ACTIONS = [
-  { id: 'break', label: 'Разрушение блока' },
-  { id: 'place', label: 'Установка блока' },
-  { id: 'interact', label: 'Взаимодействие' },
-  { id: 'other', label: 'Прочее (kill/entity)' },
-  { id: 'container_take', label: 'Изъятие из контейнера' },
-  { id: 'container_put', label: 'Помещение в контейнер' },
-  { id: 'item_drop', label: 'Выброс предмета' },
-  { id: 'item_pickup', label: 'Подбор предмета' },
-  { id: 'item_throw', label: 'Метание предмета' },
-  { id: 'entity_kill', label: 'Убийство/разрушение сущности' },
+  { id: 'break', label: 'Руйнування блока' },
+  { id: 'place', label: 'Встановлення блока' },
+  { id: 'interact', label: 'Взаємодія' },
+  { id: 'other', label: 'Інше (kill/entity)' },
+  { id: 'container_take', label: 'Вилучення з контейнера' },
+  { id: 'container_put', label: 'Розміщення в контейнер' },
+  { id: 'item_drop', label: 'Викидання предмета' },
+  { id: 'item_pickup', label: 'Підбирання предмета' },
+  { id: 'item_throw', label: 'Кидання предмета' },
+  { id: 'entity_kill', label: 'Вбивство/руйнування сутності' },
 ];
 
 export class Store {
@@ -63,26 +63,26 @@ export class Store {
 
   open() {
     if (this.db) {
-      log('Повторное открытие пропущено: база уже подключена.');
+      log('Повторне відкриття пропущено: базу вже підключено.');
       return this.db;
     }
     if (!fs.existsSync(this.dbPath)) {
-      throw new Error(`Файл базы данных не найден: ${this.dbPath}`);
+      throw new Error(`Файл бази даних не знайдено: ${this.dbPath}`);
     }
 
-    log('Открытие SQLite базы данных.', { path: this.dbPath, sizeBytes: fs.statSync(this.dbPath).size });
+    log('Відкриття бази даних SQLite.', { path: this.dbPath, sizeBytes: fs.statSync(this.dbPath).size });
     const db = new Database(this.dbPath, { readonly: true, fileMustExist: true });
     try {
       db.pragma('journal_mode = WAL');
     } catch {
-      // Игнорируем если уже в WAL или read-only
+      // Ігноруємо, якщо вже використовується WAL або лише читання
     }
     db.pragma('busy_timeout = 5000');
     this.db = db;
-    log('SQLite подключена. Чтение метаданных.');
+    log('SQLite підключено. Читання метаданих.');
     this.refreshMeta();
     this.status.ready = true;
-    log('SQLite база готова.', { worlds: this.meta.worlds.length, users: this.meta.users.length, materials: this.meta.materials.length });
+    log('База SQLite готова.', { worlds: this.meta.worlds.length, users: this.meta.users.length, materials: this.meta.materials.length });
     return this.db;
   }
 
@@ -94,14 +94,14 @@ export class Store {
   refreshMeta() {
     const db = this.db;
     if (!db) {
-      log('Обновление метаданных пропущено: база не подключена.');
+      log('Оновлення метаданих пропущено: базу не підключено.');
       return;
     }
 
     const startedAt = performance.now();
-    log('Чтение метаданных: миры, пользователи, материалы и сущности.');
+    log('Читання метаданих: світи, користувачі, матеріали й сутності.');
 
-    // Миры
+    // Світи
     const worldsRaw = db.prepare('SELECT id, world FROM co_world ORDER BY id').all();
     const worlds = worldsRaw.map(r => ({ id: r.id, world: toStr(r.world) }));
     const worldNameToId = new Map();
@@ -111,7 +111,7 @@ export class Store {
       worldIdToName.set(w.id, w.world);
     }
 
-    // Пользователи
+    // Користувачі
     const usersRaw = db.prepare('SELECT id, user, uuid FROM co_user ORDER BY user COLLATE NOCASE').all();
     const users = usersRaw.map(r => ({
       id: r.id,
@@ -125,7 +125,7 @@ export class Store {
       userIdToUser.set(u.id, u);
     }
 
-    // Материалы блоков и предметов
+    // Матеріали блоків і предметів
     const matRaw = db.prepare('SELECT id, material FROM co_material_map').all();
     const materialNameToId = new Map();
     const materialIdToName = new Map();
@@ -142,12 +142,12 @@ export class Store {
       }
     }
 
-    // Сущности
+    // Сутності
     let entitiesRaw = [];
     try {
       entitiesRaw = db.prepare('SELECT id, entity FROM co_entity_map').all();
     } catch {
-      // таблица может отсутствовать в некоторых сборках
+      // Таблиця може бути відсутньою в деяких збірках.
     }
     const entityNameToId = new Map();
     const entityIdToName = new Map();
@@ -181,7 +181,7 @@ export class Store {
       entityNameToId,
       entityIdToName,
     };
-    log('Метаданные прочитаны.', {
+    log('Метадані прочитано.', {
       worlds: worlds.length,
       users: users.length,
       materials: materials.length,
@@ -207,7 +207,7 @@ export class Store {
     if (this.db) {
       try { this.db.close(); } catch {}
       this.db = null;
-      log('SQLite база закрыта.');
+      log('Базу SQLite закрито.');
     }
     this.status.ready = false;
   }

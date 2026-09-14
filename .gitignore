@@ -4,6 +4,8 @@ web/dist/
 *.log
 config.json
 .vscode/
+.venv/
+__pycache__/
 
 # Local tooling and temporary files
 .zcode/
@@ -21,3 +23,4 @@ config.json
 # Local database helper scripts
 make_sample_db.py
 recover_db.py
+check_coreprotect_db.py
