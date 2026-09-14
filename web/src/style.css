@@ -22,7 +22,7 @@ html, body, #app { height: 100%; margin: 0; font: 13px/1.45 "Segoe UI", system-u
 #inspector .kv > :last-child { text-align: right; overflow-wrap: anywhere; }
 #inspector .inspector-value { max-width: 190px; }
 #inspector .inspector-actions { margin: 6px 0; }
-#inspector .nearby-events { max-height: 260px; overflow-y: auto; }
+#inspector .nearby-events, #inspector .block-events { max-height: 260px; overflow-y: auto; }
 #map-wrap { flex: 1; position: relative; overflow: hidden; }
 #map { position: absolute; inset: 0; }
 
@@ -124,4 +124,12 @@ button.primary { background: #194a5e; border-color: var(--accent); }
 .card h4 { margin: 0 0 6px; }
 .kv { display: flex; justify-content: space-between; gap: 8px; padding: 2px 0; font-size: 12px; }
 .kv .k { color: var(--muted); }
-.nearby-item { padding: 3px 0; border-bottom: 1px solid var(--border); font-size: 12px; }
+.block-event-item {
+  display: block; width: 100%; padding: 5px 2px; border: 0; border-bottom: 1px solid var(--border);
+  border-radius: 0; background: transparent; color: var(--text); font: 12px/1.35 inherit; text-align: left;
+}
+.block-event-item:hover { background: #194a5e; border-color: var(--border); }
+.block-event-item.active { color: var(--accent); background: rgba(25, 74, 94, .45); cursor: default; }
+.nearby-item { padding: 5px 0; border-bottom: 1px solid var(--border); font-size: 12px; }
+.nearby-actor { color: var(--accent); font-weight: 600; }
+.nearby-details { color: var(--text); }

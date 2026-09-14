@@ -4,7 +4,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { Store } from './db.js';
-import { parseFilters, parseSnapshot, parseCursor, queryEvents, queryPlan, aggregateChunks, getEvent, nearbyByUser, bboxOf, bboxOfChunks, encodeCursor } from './queries.js';
+import { parseFilters, parseSnapshot, parseCursor, queryEvents, queryPlan, aggregateChunks, getEvent, nearbyEvents, bboxOf, bboxOfChunks, encodeCursor } from './queries.js';
 import { normalizeConfig } from './config.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -20,6 +20,7 @@ export async function buildApp({ store, cfg, rootDir = defaultRootDir } = {}) {
   const normalizedCfg = normalizeConfig(cfg);
   if (!store) throw new Error('buildApp requires a store');
   cfg = normalizedCfg;
+  store.cfg = cfg;
   const app = Fastify({ logger: false });
 
 app.addHook('onRequest', (req, reply, done) => {
@@ -66,6 +67,7 @@ app.get('/api/meta', async () => {
 app.get('/api/config', async () => ({
   bluemap: cfg.bluemap ?? { enabled: false },
   defaultLimit: cfg.defaultLimit,
+  materialNamePrefixesToStrip: cfg.materialNamePrefixesToStrip,
   coreProtectTiles: cfg.coreProtectTiles,
 }));
 
@@ -151,7 +153,7 @@ app.get('/api/event/:src/:rowid', async (req, reply) => {
   log('log', 'Запрос подробностей события.', { src: req.params.src, rowid: req.params.rowid });
   const ev = getEvent(store, req.params.src, req.params.rowid);
   if (!ev) return reply.code(404).send({ error: 'not found' });
-  const nearby = nearbyByUser(store, ev);
+  const nearby = nearbyEvents(store, ev);
   return { event: ev, nearby };
 });
 

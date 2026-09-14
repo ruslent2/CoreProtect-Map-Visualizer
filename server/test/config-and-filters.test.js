@@ -18,6 +18,7 @@ test('normalizeConfig supplies safe tiled renderer defaults and clamps values', 
 
   assert.equal(normalized.defaultLimit, 1);
   assert.deepEqual(normalized.bluemap, { enabled: true });
+  assert.deepEqual(normalized.materialNamePrefixesToStrip, ['minecraft:']);
   assert.deepEqual(normalized.coreProtectTiles, {
     tileSize: 256,
     maxConcurrentRequests: 4,
@@ -44,6 +45,7 @@ test('buildApp exposes normalized tiled configuration', async () => {
     assert.deepEqual(response.json(), {
       bluemap: { enabled: false },
       defaultLimit: 1,
+      materialNamePrefixesToStrip: ['minecraft:'],
       coreProtectTiles: { tileSize: 256, maxConcurrentRequests: 2, detailPageSize: 5000, maxTextureSize: 256 },
     });
   } finally {

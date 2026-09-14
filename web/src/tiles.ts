@@ -118,7 +118,8 @@ export class BluemapLayer {
       if (generation !== this.generation || z !== this.zoom) return;
       const source = this.cropMapHalf(img);
       const tex = Texture.from(source);
-      tex.source.scaleMode = 'linear';
+      // BlueMap imagery is pixel art; nearest-neighbour filtering preserves sharp blocks.
+      tex.source.scaleMode = 'nearest';
       const s = new Sprite(tex);
       s.position.set(tx * bpt, tz * tileHeightBlocks);
       s.width = bpt; s.height = tileHeightBlocks;

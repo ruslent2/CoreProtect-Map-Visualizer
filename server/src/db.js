@@ -2,6 +2,7 @@ import Database from 'better-sqlite3';
 import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
+import { stripMaterialNamePrefix } from './config.js';
 
 function log(message, details) {
   const suffix = details === undefined ? '' : ` ${JSON.stringify(details)}`;
@@ -133,9 +134,11 @@ export class Store {
     for (const m of matRaw) {
       const name = toStr(m.material);
       if (name) {
+        const displayName = stripMaterialNamePrefix(name, this.cfg.materialNamePrefixesToStrip);
         materialNameToId.set(name.toLowerCase(), m.id);
-        materialIdToName.set(m.id, name);
-        materialsSet.add(name);
+        materialNameToId.set(displayName.toLowerCase(), m.id);
+        materialIdToName.set(m.id, displayName);
+        materialsSet.add(displayName);
       }
     }
 
@@ -151,9 +154,11 @@ export class Store {
     for (const e of entitiesRaw) {
       const name = toStr(e.entity);
       if (name) {
+        const displayName = stripMaterialNamePrefix(name, this.cfg.materialNamePrefixesToStrip);
         entityNameToId.set(name.toLowerCase(), e.id);
-        entityIdToName.set(e.id, name);
-        materialsSet.add(name);
+        entityNameToId.set(displayName.toLowerCase(), e.id);
+        entityIdToName.set(e.id, displayName);
+        materialsSet.add(displayName);
       }
     }
 
