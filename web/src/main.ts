@@ -5,7 +5,7 @@ import { MapView } from './map';
 import { BluemapLayer } from './tiles';
 import { buildFilterPanel, buildLegend, type ScanControls } from './ui';
 import { apiAggregate, apiConfig, apiEvent, apiMeta, apiQueryPage, apiQueryPlan, apiRefreshMeta, type ApiConfig, type CpEvent, type MetaData, type SourceSnapshot } from './api';
-import { ACTION_LABELS } from './colors';
+import { ACTION_LABELS, eventColor, rgbHex } from './colors';
 import { dedupeEvents, distributeEventsByTile, sortOccupiedTiles, tileBounds, tileKey } from './tile-utils';
 import { DetailQueueSession, DetailTileQueue, ManualScanOrchestrator } from './scan-pipeline';
 
@@ -128,7 +128,36 @@ async function apply() {
   } catch (error) { if (!abortError(error) && !signal.aborted) showStatus(`Ошибка; предыдущая карта сохранена: ${String(error)}`, true); } finally { if (localGeneration === generation && !detailRun) { setLoading(false); rebuild(); } }
 }
 function stop() { stopped = true; detailSession?.stop(); detailPriority = null; scan.stop(generation); controller?.abort(); setLoading(false); showStatus('Остановлено: обзор и загруженные детали сохранены'); }
-function onHover(events: CpEvent[] | null, sx: number, sy: number) { if (!events?.length) { tooltipEl.style.display = 'none'; return; } tooltipEl.textContent = `${events.length} событий`; tooltipEl.style.display = 'block'; tooltipEl.style.left = `${sx + 12}px`; tooltipEl.style.top = `${sy + 12}px`; }
+// Coordinates from Pixi are viewport-relative, while the tooltip is positioned inside #map-wrap.
+function onHover(events: CpEvent[] | null, sx: number, sy: number) {
+  if (!events?.length) { tooltipEl.style.display = 'none'; return; }
+
+  const context = colorContext(appliedRequest?.filters ?? draftFilters);
+  const visibleEvents = events.slice(0, 6);
+  const fragment = document.createDocumentFragment();
+  for (const event of visibleEvents) {
+    const item = inspectorElement('div'); item.className = 'ev';
+    const swatch = inspectorElement('span'); swatch.className = 'swatch';
+    swatch.style.background = rgbHex(eventColor(event, context));
+    const nick = inspectorElement('b', event.nick ?? '?'); nick.className = 'nick';
+    const details = inspectorElement('span', ` · ${eventActionLabel(event)} · ${event.material ?? '—'} · ${localTime(event.time)}`);
+    details.className = 'tiny';
+    item.append(swatch, nick, details);
+    fragment.append(item);
+  }
+  if (events.length > visibleEvents.length) {
+    const more = inspectorElement('div', `…ещё ${events.length - visibleEvents.length} в этом блоке`);
+    more.className = 'tiny';
+    fragment.append(more);
+  }
+  tooltipEl.replaceChildren(fragment);
+  tooltipEl.style.display = 'block';
+
+  const mapRect = $('map-wrap').getBoundingClientRect();
+  const margin = 8;
+  tooltipEl.style.left = `${Math.max(margin, Math.min(sx - mapRect.left + 14, mapRect.width - tooltipEl.offsetWidth - margin))}px`;
+  tooltipEl.style.top = `${Math.max(margin, Math.min(sy - mapRect.top + 14, mapRect.height - tooltipEl.offsetHeight - margin))}px`;
+}
 function inspectorElement<K extends keyof HTMLElementTagNameMap>(tag: K, text?: string) {
   const element = document.createElement(tag);
   if (text != null) element.textContent = text;
