@@ -18,7 +18,7 @@ test('normalizeConfig supplies safe tiled renderer defaults and clamps values', 
 
   assert.equal(normalized.defaultLimit, 1);
   assert.deepEqual(normalized.bluemap, { enabled: true });
-  assert.deepEqual(normalized.materialNamePrefixesToStrip, ['minecraft:']);
+  assert.deepEqual(normalized.materialNamePrefixesToStrip, []);
   assert.deepEqual(normalized.coreProtectTiles, {
     tileSize: 256,
     maxConcurrentRequests: 4,
@@ -26,6 +26,14 @@ test('normalizeConfig supplies safe tiled renderer defaults and clamps values', 
     maxTextureSize: 256,
   });
   assert.equal(normalizeConfig({}).defaultLimit, 50000);
+});
+
+test('normalizeConfig uses only a valid configured material prefix array', () => {
+  assert.deepEqual(
+    normalizeConfig({ materialNamePrefixesToStrip: [' Minecraft: ', 42, 'custom:', '   '] }).materialNamePrefixesToStrip,
+    ['minecraft:', 'custom:'],
+  );
+  assert.deepEqual(normalizeConfig({ materialNamePrefixesToStrip: 'minecraft:' }).materialNamePrefixesToStrip, []);
 });
 
 test('buildApp exposes normalized tiled configuration', async () => {
@@ -45,7 +53,7 @@ test('buildApp exposes normalized tiled configuration', async () => {
     assert.deepEqual(response.json(), {
       bluemap: { enabled: false },
       defaultLimit: 1,
-      materialNamePrefixesToStrip: ['minecraft:'],
+      materialNamePrefixesToStrip: [],
       coreProtectTiles: { tileSize: 256, maxConcurrentRequests: 2, detailPageSize: 5000, maxTextureSize: 256 },
     });
   } finally {

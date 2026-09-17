@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import Database from 'better-sqlite3';
 import { buildApp } from '../src/index.js';
+import { ACTIONS } from '../src/db.js';
 
 function store() {
   const db = new Database(':memory:');
@@ -10,12 +11,27 @@ function store() {
   const maps = { worldNameToId:new Map([['world',1]]), userNameToId:new Map([['alice',1],['#environment',2]]), userIdToUser:new Map([[1,{id:1,nick:'alice'}],[2,{id:2,nick:'#environment'}]]), materialIdToName:new Map([[1,'STONE'],[2,'minecraft:grass_block']]), entityIdToName:new Map() };
   return { db, cfg:{defaultLimit:2,materialNamePrefixesToStrip:['minecraft:'],coreProtectTiles:{tileSize:16}}, meta:{worlds:[{id:1,world:'world'}]}, status:{}, getDb:()=>db,getMaps:()=>maps,getMeta:()=>({worlds:[],users:[],materials:[],actions:[]}),refreshMeta(){},close:()=>db.close() };
 }
-function insert(s, table, time, x, z, user=1, type=1) { s.db.prepare(`INSERT INTO co_${table}(time,user,wid,x,y,z,type,action) VALUES(?,?,1,?,64,?,?,0)`).run(time,user,x,z,type); }
+function insert(s, table, time, x, z, user=1, type=1, action=0) { s.db.prepare(`INSERT INTO co_${table}(time,user,wid,x,y,z,type,action) VALUES(?,?,1,?,64,?,?,?)`).run(time,user,x,z,type,action); }
 async function appFor(s) { return buildApp({store:s,cfg:s.cfg,rootDir:'no-static-test-root'}); }
 
-test('plan/query/aggregate share filters, snapshots, and all sources', async () => {
+test('item action filters map to CoreProtect 23.2 codes', async () => {
+  const s=store();
+  for (let action=2; action<=12; action++) insert(s,'item',100+action,action,0,1,1,action);
+  const app=await appFor(s);
+  const ids=['item_drop','item_pickup','ender_take','ender_put','item_throw','item_shoot','item_break','craft_put','craft_take','trade_give','trade_receive'];
+  try {
+    for (const [index,id] of ids.entries()) {
+      const body=(await app.inject(`/api/query?actions=${id}&pageSize=20`)).json();
+      assert.deepEqual(body.events.map(event=>event.action),[index+2]);
+    }
+    assert.equal(ACTIONS.some(action=>action.id==='other'),false);
+    assert.deepEqual(ACTIONS.find(action=>action.id==='craft_take'),{id:'craft_take',label:'Крафт: забрано',src:'item',action:10});
+  } finally { await app.close();s.close(); }
+});
+
+test('plan/query/aggregate share filters, snapshots, players, and all sources', async () => {
   const s=store(); insert(s,'block',10,0,0); insert(s,'container',10,1,0); insert(s,'item',10,2,0); insert(s,'block',11,3,0,2); const app=await appFor(s);
-  try { const plan=(await app.inject('/api/query-plan?users=!%23*')).json(); assert.equal(plan.strategy,'overview-and-detail'); assert.equal(plan.countAtLeast,3); const snap=encodeURIComponent(JSON.stringify(plan.snapshot)); insert(s,'block',12,4,0); const query=(await app.inject(`/api/query?users=!%23*&pageSize=10&snapshot=${snap}`)).json(); assert.equal(query.count,3); assert.equal(new Set(query.events.map(e=>e.src)).size,3); const aggregate=(await app.inject(`/api/aggregate?users=!%23*&snapshot=${snap}`)).json(); assert.equal(aggregate.total,3); assert.equal(aggregate.chunks.reduce((n,c)=>n+c.cnt,0),3); } finally { await app.close(); s.close(); }
+  try { const plan=(await app.inject('/api/query-plan?users=!%23*')).json(); assert.equal(plan.strategy,'overview-and-detail'); assert.equal(plan.countAtLeast,3); const snap=encodeURIComponent(JSON.stringify(plan.snapshot)); insert(s,'block',12,4,0); const query=(await app.inject(`/api/query?users=!%23*&pageSize=10&snapshot=${snap}`)).json(); assert.equal(query.count,3); assert.equal(new Set(query.events.map(e=>e.src)).size,3); const aggregate=(await app.inject(`/api/aggregate?users=!%23*&snapshot=${snap}`)).json(); assert.equal(aggregate.total,3); assert.equal(aggregate.chunks.reduce((n,c)=>n+c.cnt,0),3); assert.deepEqual(aggregate.players,[{nick:'alice',uuid:'a'}]); } finally { await app.close(); s.close(); }
 });
 
 test('keyset ordering preserves same-timestamp source/row identities and hasMore', async () => {

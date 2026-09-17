@@ -29,16 +29,23 @@ export function toStr(v) {
 }
 
 export const ACTIONS = [
-  { id: 'break', label: 'Руйнування блока' },
-  { id: 'place', label: 'Встановлення блока' },
-  { id: 'interact', label: 'Взаємодія' },
-  { id: 'other', label: 'Інше (kill/entity)' },
-  { id: 'container_take', label: 'Вилучення з контейнера' },
-  { id: 'container_put', label: 'Розміщення в контейнер' },
-  { id: 'item_drop', label: 'Викидання предмета' },
-  { id: 'item_pickup', label: 'Підбирання предмета' },
-  { id: 'item_throw', label: 'Кидання предмета' },
-  { id: 'entity_kill', label: 'Вбивство/руйнування сутності' },
+  { id: 'break', label: 'Руйнування блока', src: 'block', action: 0 },
+  { id: 'place', label: 'Встановлення блока', src: 'block', action: 1 },
+  { id: 'interact', label: 'Взаємодія', src: 'block', action: 2 },
+  { id: 'entity_kill', label: 'Вбивство/руйнування сутності', src: 'block', action: 3 },
+  { id: 'container_take', label: 'Вилучено з контейнера', src: 'container', action: 0 },
+  { id: 'container_put', label: 'Поміщено до контейнера', src: 'container', action: 1 },
+  { id: 'item_drop', label: 'Викинуто предмет', src: 'item', action: 2 },
+  { id: 'item_pickup', label: 'Підібрано предмет', src: 'item', action: 3 },
+  { id: 'ender_take', label: 'Вилучено з ендер-скрині', src: 'item', action: 4 },
+  { id: 'ender_put', label: 'Поміщено до ендер-скрині', src: 'item', action: 5 },
+  { id: 'item_throw', label: 'Кинуто предмет', src: 'item', action: 6 },
+  { id: 'item_shoot', label: 'Вистрілено предметом', src: 'item', action: 7 },
+  { id: 'item_break', label: 'Зламано інструмент або броню', src: 'item', action: 8 },
+  { id: 'craft_put', label: 'Крафт: покладено', src: 'item', action: 9 },
+  { id: 'craft_take', label: 'Крафт: забрано', src: 'item', action: 10 },
+  { id: 'trade_give', label: 'Торгівля: віддано', src: 'item', action: 11 },
+  { id: 'trade_receive', label: 'Торгівля: отримано', src: 'item', action: 12 },
 ];
 
 export class Store {

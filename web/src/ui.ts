@@ -4,13 +4,14 @@ import type { ColorMode } from './colors';
 import { uuidColor, actionColor, rgbHex, ACTION_LABELS } from './colors';
 
 type ChangeFn = (patch: Partial<Filters>) => void;
+type TimeChangeFn = (time: TimeSelection, preserveEditor?: boolean) => void;
 export interface ScanControls { status: string; error?: string | null; canShowAll: boolean; canStop: boolean; canContinueDetails: boolean; bluemapOpacity: number; lodMarkersVisible: boolean; onBluemapOpacity(alpha: number): void; onLodMarkersVisible(enabled: boolean): void; onApply(): void; onStop(): void; onContinueDetails(): void; onShowAll(): void; }
 
 export interface MetaData {
   worlds: { id: number; world: string }[];
   users: { id: number; nick: string; uuid: string | null }[];
   materials: string[];
-  actions: { id: string; label: string }[];
+  actions: { id: string; label: string; src: string; action: number }[];
 }
 
 const MODE_LABELS: Record<ColorMode, string> = {
@@ -44,7 +45,7 @@ function splitPatternPrefix(line: string) {
 }
 
 export function buildFilterPanel(
-  root: HTMLElement, f: Filters, time: TimeSelection, meta: MetaData, onChange: ChangeFn, onTimeChange: (time: TimeSelection) => void, controls: ScanControls
+  root: HTMLElement, f: Filters, time: TimeSelection, meta: MetaData, onChange: ChangeFn, onTimeChange: TimeChangeFn, controls: ScanControls
 ) {
   root.innerHTML = '';
   const el = (html: string) => {
@@ -104,9 +105,11 @@ export function buildFilterPanel(
   });
   (timeRow.querySelector('#t-clear') as HTMLButtonElement).onclick = () => onTimeChange({ mode: 'all', from: null, to: null });
   root.append(timeRow);
-  const timeInputs = el(`<div class="time-inputs"><input id="time-from" type="datetime-local" step="1" value="${epochSecondsToLocalDateTime(time.from) ?? ''}"><input id="time-to" type="datetime-local" step="1" value="${epochSecondsToLocalDateTime(time.to) ?? ''}"></div>`);
-  const updateTime = () => { const from = localDateTimeToEpochSeconds((timeInputs.querySelector('#time-from') as HTMLInputElement).value || null), to = localDateTimeToEpochSeconds((timeInputs.querySelector('#time-to') as HTMLInputElement).value || null); onTimeChange({ mode: 'range', from, to }); };
-  timeInputs.querySelectorAll('input').forEach(input => input.addEventListener('change', updateTime));
+  const timeInputs = el(`<div class="time-inputs"><input id="time-from" data-preserve-on-rebuild type="datetime-local" step="1" value="${epochSecondsToLocalDateTime(time.from) ?? ''}"><input id="time-to" data-preserve-on-rebuild type="datetime-local" step="1" value="${epochSecondsToLocalDateTime(time.to) ?? ''}"></div>`);
+  // Під час редагування оновлюємо лише чернетку: перебудова DOM скидає активний
+  // сегмент нативного datetime-local і заважає вводити значення клавіатурою.
+  const updateTime = () => { const from = localDateTimeToEpochSeconds((timeInputs.querySelector('#time-from') as HTMLInputElement).value || null), to = localDateTimeToEpochSeconds((timeInputs.querySelector('#time-to') as HTMLInputElement).value || null); onTimeChange({ mode: 'range', from, to }, true); };
+  timeInputs.querySelectorAll('input').forEach(input => input.addEventListener('input', updateTime));
   root.append(timeInputs);
   if (controls.error) root.append(el(`<div class="time-error">${controls.error}</div>`));
 
@@ -229,13 +232,12 @@ export function buildFilterPanel(
 
   // --- Дії ---
   root.append(el(`<h3>Дії</h3>`));
-  const actionItems = meta.actions.map(a => {
-    let key: [string, number] = ['block', 0];
-    if (a.id.startsWith('container')) key = ['container', 0];
-    else if (a.id.startsWith('item')) key = ['item', 0];
-    else if (a.id === 'entity_kill') key = ['entity', 0];
-    return { key: a.id, label: a.label, color: rgbHex(actionColor(key[0], key[1])) };
-  });
+  // Сервер передає точну пару джерело/код, тому колір відповідає вибраній дії.
+  const actionItems = meta.actions.map(a => ({
+    key: a.id,
+    label: a.label,
+    color: rgbHex(actionColor(a.src, a.action)),
+  }));
   const actSel = makeCheckboxPicker(actionItems, f.actions, v => onChange({ actions: v }));
   const actExcl = makeExclToggle('actionsExcl', f, onChange, 'Виключити вибрані');
   root.append(actExcl, actSel);
@@ -363,16 +365,26 @@ function renderChips(root: HTMLElement, f: Filters, onChange: ChangeFn) {
   root.append(chips);
 }
 
-export function buildLegend(root: HTMLElement, f: Filters, meta: MetaData) {
-  root.innerHTML = `<div class="tiny" style="margin-bottom:4px">Основний колір: режим</div>`;
+export interface LegendUser { nick: string | null; uuid: string | null }
+
+export function buildLegend(root: HTMLElement, f: Filters, users: LegendUser[] | null) {
+  // Легенда з'являється лише для фактично відображеного результату пошуку.
+  root.hidden = users === null;
+  if (users === null) { root.replaceChildren(); return; }
+  root.innerHTML = `<div class="tiny" style="margin-bottom:4px">Основний колір: ${MODE_LABELS[f.mode]}</div>`;
   if (f.mode === 'user') {
-    for (const u of meta.users.slice(0, 40)) {
+    if (!users.length) root.innerHTML += `<div class="tiny">Гравців у результатах немає</div>`;
+    for (const u of users) {
       const d = document.createElement('div');
       d.className = 'li';
-      d.innerHTML = `<span class="sw" style="background:${rgbHex(uuidColor(u.uuid, u.nick))}"></span><span>${u.nick}</span>`;
+      const swatch = document.createElement('span');
+      swatch.className = 'sw';
+      swatch.style.background = rgbHex(uuidColor(u.uuid, u.nick));
+      const name = document.createElement('span');
+      name.textContent = u.nick ?? 'Невідомий гравець';
+      d.append(swatch, name);
       root.append(d);
     }
-    if (meta.users.length > 40) root.innerHTML += `<div class="tiny">…і ще ${meta.users.length - 40}</div>`;
   } else if (f.mode === 'action') {
     for (const [k, label] of Object.entries(ACTION_LABELS)) {
       const [src, a] = k.split(':');

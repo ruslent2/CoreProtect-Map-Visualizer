@@ -46,7 +46,7 @@ export function defaultFilters(defaultLimit = SAFE_DEFAULT_FILTER_LIMIT): Filter
     actions: [], actionsExcl: false,
     materials: [], materialsExcl: false,
     tFrom: null, tTo: null, y: null,
-    limit: defaultLimit, mode: 'user', mix: 0.25,
+    limit: defaultLimit, mode: 'user', mix: 0.1,
   };
 }
 

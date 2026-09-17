@@ -1,23 +1,234 @@
 import type { BBox, Filters } from './state';
 import { filtersToQuery } from './state';
 
-export interface CpEvent { src: string; rowid_src: number; time: number; nick: string | null; uuid: string | null; world: string; x: number; y: number; z: number; material: string | null; amount: number | null; action: number; rolled_back: number; }
-export interface Chunk { cx: number; cz: number; cnt: number; tmin: number; tmax: number; users: number; dominant: { nick: string | null; uuid: string | null; src: string; action: number } | null; }
-export interface SourceSnapshot { block: number; container: number; item: number; }
-export interface CoreProtectTilesConfig { tileSize: number; maxConcurrentRequests: number; detailPageSize: number; maxTextureSize: number; }
-export interface ApiConfig { defaultLimit: number; coreProtectTiles: CoreProtectTilesConfig; bluemap: Record<string, unknown>; }
-export interface QueryPlanResult { strategy: 'all' | 'overview-and-detail'; threshold: number; countAtLeast: number; totalExact: boolean; total?: number; bounds: BBox | null; snapshot: SourceSnapshot; elapsedMs: number; }
-export interface QueryPageResult { count: number; hasMore: boolean; nextCursor: string | null; snapshot: SourceSnapshot; truncated: boolean; elapsedMs: number; events: CpEvent[]; bbox: BBox | null; }
-export interface AggregateResult { chunks: Chunk[]; occupiedTiles: { tx: number; tz: number; cnt: number; tmin: number; tmax: number }[]; total: number; temporal: { tmin: number; tmax: number; users: number } | null; elapsedMs: number; snapshot: SourceSnapshot; bbox: BBox | null; }
-export interface MetaData { worlds: { id: number; world: string }[]; users: { id: number; nick: string; uuid: string | null }[]; materials: string[]; actions: { id: string; label: string }[]; }
+// Структуры данных, получаемые от API CoreProtect.
+export interface CpEvent {
+	src: string;
+	rowid_src: number;
+	time: number;
+	nick: string | null;
+	uuid: string | null;
+	world: string;
+	x: number;
+	y: number;
+	z: number;
+	material: string | null;
+	amount: number | null;
+	action: number;
+	rolled_back: number;
+}
 
-async function getJson<T>(path: string, signal?: AbortSignal, method = 'GET'): Promise<T> { const response = await fetch(path, { signal, method }); if (!response.ok) throw new Error((await response.text()) || `${response.status} ${response.statusText}`); return response.json() as Promise<T>; }
-function query(filters: Filters, extra: Record<string, string> = {}) { return filtersToQuery(filters, extra); }
-export function apiConfig(signal?: AbortSignal) { return getJson<ApiConfig>('/api/config', signal); }
-export function apiMeta(signal?: AbortSignal) { return getJson<MetaData>('/api/meta', signal); }
-export function apiRefreshMeta(signal?: AbortSignal) { return getJson<MetaData>('/api/meta/refresh', signal, 'POST'); }
-export function apiQueryPlan(filters: Filters, snapshot?: SourceSnapshot, signal?: AbortSignal) { return getJson<QueryPlanResult>(`/api/query-plan?${query(filters, snapshot ? { snapshot: JSON.stringify(snapshot) } : {})}`, signal); }
-export function apiQueryPage(filters: Filters, options: { snapshot: SourceSnapshot; cursor?: string | null; pageSize: number; tile?: { xMin: number; xMaxExclusive: number; zMin: number; zMaxExclusive: number }; }, signal?: AbortSignal) { const extra: Record<string, string> = { snapshot: JSON.stringify(options.snapshot), pageSize: String(options.pageSize) }; if (options.cursor) extra.cursor = options.cursor; if (options.tile) Object.assign(extra, Object.fromEntries(Object.entries(options.tile).map(([key, value]) => [key, String(value)]))); return getJson<QueryPageResult>(`/api/query?${query(filters, extra)}`, signal); }
-export function apiAggregate(filters: Filters, snapshot: SourceSnapshot, tileSize: number, signal?: AbortSignal) { return getJson<AggregateResult>(`/api/aggregate?${query(filters, { snapshot: JSON.stringify(snapshot), tileSize: String(tileSize) })}`, signal); }
-export function apiEvent(src: string, rowid: number, signal?: AbortSignal) { return getJson<{ event: CpEvent; nearby: CpEvent[] }>(`/api/event/${encodeURIComponent(src)}/${rowid}`, signal); }
-export function apiSyncStatus(signal?: AbortSignal) { return getJson<unknown>('/api/sync/status', signal); }
+export interface Chunk {
+	cx: number;
+	cz: number;
+	cnt: number;
+	tmin: number;
+	tmax: number;
+	users: number;
+	dominant: {
+		nick: string | null;
+		uuid: string | null;
+		src: string;
+		action: number;
+	} | null;
+}
+
+export interface SourceSnapshot {
+	block: number;
+	container: number;
+	item: number;
+}
+
+export interface CoreProtectTilesConfig {
+	tileSize: number;
+	maxConcurrentRequests: number;
+	detailPageSize: number;
+	maxTextureSize: number;
+}
+
+export interface ApiConfig {
+	defaultLimit: number;
+	coreProtectTiles: CoreProtectTilesConfig;
+	bluemap: Record<string, unknown>;
+}
+
+export interface QueryPlanResult {
+	strategy: 'all' | 'overview-and-detail';
+	threshold: number;
+	countAtLeast: number;
+	totalExact: boolean;
+	total?: number;
+	bounds: BBox | null;
+	snapshot: SourceSnapshot;
+	elapsedMs: number;
+}
+
+export interface QueryPageResult {
+	count: number;
+	hasMore: boolean;
+	nextCursor: string | null;
+	snapshot: SourceSnapshot;
+	truncated: boolean;
+	elapsedMs: number;
+	events: CpEvent[];
+	bbox: BBox | null;
+}
+
+export interface AggregateResult {
+	chunks: Chunk[];
+	occupiedTiles: {
+		tx: number;
+		tz: number;
+		cnt: number;
+		tmin: number;
+		tmax: number;
+	}[];
+	players: {
+		nick: string | null;
+		uuid: string | null;
+	}[];
+	total: number;
+	temporal: {
+		tmin: number;
+		tmax: number;
+		users: number;
+	} | null;
+	elapsedMs: number;
+	snapshot: SourceSnapshot;
+	bbox: BBox | null;
+}
+
+export interface MetaData {
+	worlds: {
+		id: number;
+		world: string;
+	}[];
+	users: {
+		id: number;
+		nick: string;
+		uuid: string | null;
+	}[];
+	materials: string[];
+	actions: {
+		id: string;
+		label: string;
+		src: string;
+		action: number;
+	}[];
+}
+
+// Выполняет HTTP-запрос и преобразует успешный ответ в JSON.
+async function getJson<T>(
+	path: string,
+	signal?: AbortSignal,
+	method = 'GET',
+): Promise<T> {
+	const response = await fetch(path, { signal, method });
+
+	if (!response.ok) {
+		throw new Error(
+			(await response.text()) || `${response.status} ${response.statusText}`,
+		);
+	}
+
+	return response.json() as Promise<T>;
+}
+
+// Добавляет фильтры к дополнительным параметрам строки запроса.
+function query(filters: Filters, extra: Record<string, string> = {}) {
+	return filtersToQuery(filters, extra);
+}
+
+// Методы для получения конфигурации и справочных данных.
+export function apiConfig(signal?: AbortSignal) {
+	return getJson<ApiConfig>('/api/config', signal);
+}
+
+export function apiMeta(signal?: AbortSignal) {
+	return getJson<MetaData>('/api/meta', signal);
+}
+
+export function apiRefreshMeta(signal?: AbortSignal) {
+	return getJson<MetaData>('/api/meta/refresh', signal, 'POST');
+}
+
+// Планирует выборку с необязательным снимком источников данных.
+export function apiQueryPlan(
+	filters: Filters,
+	snapshot?: SourceSnapshot,
+	signal?: AbortSignal,
+) {
+	return getJson<QueryPlanResult>(
+		`/api/query-plan?${query(
+			filters,
+			snapshot ? { snapshot: JSON.stringify(snapshot) } : {},
+		)}`,
+		signal,
+	);
+}
+
+// Загружает страницу событий, при необходимости ограниченную тайлом карты.
+export function apiQueryPage(
+	filters: Filters,
+	options: {
+		snapshot: SourceSnapshot;
+		cursor?: string | null;
+		pageSize: number;
+		tile?: {
+			xMin: number;
+			xMaxExclusive: number;
+			zMin: number;
+			zMaxExclusive: number;
+		};
+	},
+	signal?: AbortSignal,
+) {
+	const extra: Record<string, string> = {
+		snapshot: JSON.stringify(options.snapshot),
+		pageSize: String(options.pageSize),
+	};
+
+	if (options.cursor) {
+		extra.cursor = options.cursor;
+	}
+
+	if (options.tile) {
+		Object.assign(
+			extra,
+			Object.fromEntries(
+				Object.entries(options.tile).map(([key, value]) => [key, String(value)]),
+			),
+		);
+	}
+
+	return getJson<QueryPageResult>(`/api/query?${query(filters, extra)}`, signal);
+}
+
+// Получает агрегированные данные для отображения на карте.
+export function apiAggregate(
+	filters: Filters,
+	snapshot: SourceSnapshot,
+	tileSize: number,
+	signal?: AbortSignal,
+) {
+	return getJson<AggregateResult>(
+		`/api/aggregate?${query(filters, {
+			snapshot: JSON.stringify(snapshot),
+			tileSize: String(tileSize),
+		})}`,
+		signal,
+	);
+}
+
+// Получает отдельное событие и события рядом с ним.
+export function apiEvent(src: string, rowid: number, signal?: AbortSignal) {
+	return getJson<{ event: CpEvent; nearby: CpEvent[] }>(
+		`/api/event/${encodeURIComponent(src)}/${rowid}`,
+		signal,
+	);
+}
+
+// Получает состояние синхронизации сервера.
+export function apiSyncStatus(signal?: AbortSignal) {
+	return getJson<unknown>('/api/sync/status', signal);
+}

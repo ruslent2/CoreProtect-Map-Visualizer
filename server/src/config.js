@@ -10,24 +10,26 @@ function clamp(value, min, max) {
   return Math.min(max, Math.max(min, value));
 }
 
-/** Removes a configured namespace prefix from a material or entity display name. */
+/** Видаляє налаштований префікс простору імен із відображуваної назви матеріалу або сутності. */
 export function stripMaterialNamePrefix(name, prefixes = []) {
   const value = String(name ?? '');
   const match = prefixes.find(prefix => value.toLowerCase().startsWith(prefix));
   return match ? value.slice(match.length) : value;
 }
 
-/** Normalizes the public server configuration without changing unrelated settings. */
+/** Нормалізує публічну конфігурацію сервера, не змінюючи не пов’язані з нею параметри. */
 export function normalizeConfig(config = {}) {
   const defaultLimit = clamp(toInteger(config.defaultLimit, 50000), 1, SERVER_LIMIT_MAX);
   const suppliedTiles = config.coreProtectTiles ?? {};
-  // Remove the vanilla namespace from labels; [] preserves complete material names.
-  const materialNamePrefixesToStrip = (Array.isArray(config.materialNamePrefixesToStrip) ? config.materialNamePrefixesToStrip : ['minecraft:'])
+  
+  // Використовує лише явно задані префікси; некоректне значення не видаляє жодного префікса.
+  const materialNamePrefixesToStrip = (Array.isArray(config.materialNamePrefixesToStrip) ? config.materialNamePrefixesToStrip : [])
     .filter(value => typeof value === 'string')
     .map(value => value.trim().toLowerCase())
     .filter(Boolean);
   const rawTileSize = clamp(toInteger(suppliedTiles.tileSize, 256), 16, 2048);
-  // Tile dimensions are block-aligned; flooring is deterministic and keeps the value in range.
+
+  // Розміри плиток вирівнюються за блоками; округлення донизу є детермінованим і зберігає значення в межах діапазону.
   const tileSize = Math.max(16, Math.floor(rawTileSize / 16) * 16);
   const maxConcurrentRequests = clamp(toInteger(suppliedTiles.maxConcurrentRequests, 2), 1, 4);
   const detailPageSize = clamp(toInteger(suppliedTiles.detailPageSize, 5000), 100, Math.min(20000, SERVER_LIMIT_MAX));

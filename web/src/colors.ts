@@ -1,3 +1,5 @@
+import SparkMD5 from 'spark-md5';
+
 // Система кольорів із пріоритетами режимів.
 // Основний колір визначається активним режимом забарвлення;
 // допоміжні виміри домішуються до нього (відтінком) і
@@ -12,23 +14,19 @@ export interface EventLike {
 }
 
 export const ACTION_LABELS: Record<string, string> = {
-  'block:0': 'Руйнування', 'block:1': 'Встановлення', 'block:2': 'Взаємодія', 'block:3': 'Інше',
+  'block:0': 'Руйнування', 'block:1': 'Встановлення', 'block:2': 'Взаємодія', 'block:3': 'Вбивство/руйнування сутності',
   'container:0': 'Вилучено з контейнера', 'container:1': 'Поміщено до контейнера',
-  'item:0': 'Викидання предмета', 'item:1': 'Підбирання предмета', 'item:2': 'Кидання предмета',
-  'entity:0': 'Вбивство сутності',
+  'item:2': 'Викинуто предмет', 'item:3': 'Підібрано предмет',
+  'item:4': 'Вилучено з ендер-скрині', 'item:5': 'Поміщено до ендер-скрині',
+  'item:6': 'Кинуто предмет', 'item:7': 'Вистрілено предметом',
+  'item:8': 'Зламано інструмент або броню',
+  'item:9': 'Крафт: покладено', 'item:10': 'Крафт: забрано',
+  'item:11': 'Торгівля: віддано', 'item:12': 'Торгівля: отримано',
 };
 
 function rgbHexNum(n: number): [number, number, number] {
   return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
 }
-
-// Палітра індексованих кольорів Minecraft (як для імен / панелі локатора), порядок як у грі
-// переробити з https://ru.minecraft.wiki/w/%D0%9A%D0%B0%D0%BB%D1%8C%D0%BA%D1%83%D0%BB%D1%8F%D1%82%D0%BE%D1%80%D1%8B/UUID
-const MC_PALETTE: [number, number, number][] = [
-  0x00AAAA, 0x5555FF, 0xFF55FF, 0x00FFAA, 0xFF5555, 0xFFFF55,
-  0x00AA00, 0xAAAAAA, 0x55FFFF, 0xAA00AA, 0xAA0000, 0xFFAA00,
-  0xFFFF00, 0x55FF55, 0xFFAA55,
-].map(rgbHexNum);
 
 function javaHash(s: string): number {
   let h = 0;
@@ -38,27 +36,60 @@ function javaHash(s: string): number {
   return h;
 }
 
-// UUID → колір, як у грі (імена на табличках / панелі локатора):
-// floor(hash(uuid) / 2^32) за модулем довжини палітри, з поправкою на знак
-// переробити з https://ru.minecraft.wiki/w/%D0%9A%D0%B0%D0%BB%D1%8C%D0%BA%D1%83%D0%BB%D1%8F%D1%82%D0%BE%D1%80%D1%8B/UUID
+// Відтворює java.util.UUID.hashCode() через XOR двох 64-бітних половин.
+function uuidHashCode(uuid: string): number | null {
+  const hex = uuid.replaceAll('-', '');
+  if (!/^[0-9a-fA-F]{32}$/.test(hex)) return null;
+  const most = BigInt(`0x${hex.slice(0, 16)}`);
+  const least = BigInt(`0x${hex.slice(16)}`);
+  const hilo = most ^ least;
+  return Number(BigInt.asIntN(32, (hilo >> 32n) ^ hilo));
+}
+
+// Аналог Java UUID.nameUUIDFromBytes для імені офлайн-гравця (UUID v3, MD5).
+function offlinePlayerUuidHashCode(username: string): number {
+  const input = new TextEncoder().encode(`OfflinePlayer:${username}`);
+  const digest = SparkMD5.ArrayBuffer.hash(input.buffer, true);
+  const bytes = Uint8Array.from(digest, char => char.charCodeAt(0));
+  bytes[6] = (bytes[6] & 0x0f) | 0x30;
+  bytes[8] = (bytes[8] & 0x3f) | 0x80;
+  const hex = Array.from(bytes, byte => byte.toString(16).padStart(2, '0')).join('');
+  return uuidHashCode(hex)!;
+}
+
+// Зберігає HSV-відтінок і насиченість, установлюючи brightness на 90%.
+function normalizeBrightness90(rgb: [number, number, number]): [number, number, number] {
+  const max = Math.max(...rgb);
+  if (max === 0) return [230, 230, 230];
+  const scale = (0.9 * 255) / max;
+  return rgb.map(channel => Math.round(channel * scale)) as [number, number, number];
+}
+
+// UUID → колір маркера; за відсутності UUID генерується серверний offline UUID з ніку.
 export function uuidColor(uuid: string | null, nick: string | null): [number, number, number] {
-  const key = uuid || nick || '#unknown';
-  let i = Math.floor(javaHash(key) / 0x100000000) % MC_PALETTE.length;
-  if (i < 0) i += MC_PALETTE.length;
-  return MC_PALETTE[i];
+  const hash = uuid ? uuidHashCode(uuid) : null;
+  const offlineHash = offlinePlayerUuidHashCode(nick || '#unknown');
+  return normalizeBrightness90(rgbHexNum(hash ?? offlineHash));
 }
 
 const ACTION_COLORS: Record<string, [number, number, number]> = Object.fromEntries([
   ['block:0', 0xE53935], // руйнування — червоний
   ['block:1', 0x43A047], // встановлення — зелений
   ['block:2', 0xFDD835], // взаємодія — жовтий
-  ['block:3', 0xFB8C00], // інше — помаранчевий
+  ['block:3', 0xD81B60], // вбивство сутності — рожево-червоний
   ['container:0', 0x1E88E5], // вилучення — синій
   ['container:1', 0x00ACC1], // поміщення — блакитний
-  ['item:0', 0x8E24AA], // викидання
-  ['item:1', 0x5E35B1], // підбирання
-  ['item:2', 0x3949AB], // кидання
-  ['entity:0', 0xD81B60], // вбивство
+  ['item:2', 0x8E24AA], // викидання
+  ['item:3', 0x5E35B1], // підбирання
+  ['item:4', 0x1976D2], // вилучення з ендер-скрині
+  ['item:5', 0x00897B], // поміщення до ендер-скрині
+  ['item:6', 0x3949AB], // кидання
+  ['item:7', 0x6D4C41], // постріл
+  ['item:8', 0xE53935], // поломка
+  ['item:9', 0xF9A825], // покладено для крафту
+  ['item:10', 0x7CB342], // забрано з крафту
+  ['item:11', 0xFB8C00], // віддано в торгівлі
+  ['item:12', 0x43A047], // отримано в торгівлі
 ].map(([k, v]) => [k, rgbHexNum(v as number)]));
 
 export function actionColor(src: string, action: number): [number, number, number] {

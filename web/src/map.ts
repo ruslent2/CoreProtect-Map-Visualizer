@@ -27,43 +27,760 @@ interface PixiResource extends TileResource {
 
 /** Pixi/WebGL map; canvases are bounded sources for individual texture tiles. */
 export class MapView {
-  app: Application; world = new Container(); tileLayer = new Container(); lodLayer = new Container(); aggregateLayer = new Container(); detailLayer = new Container(); selGraphics = new Graphics(); cam = { cx: 0, cz: 0, scale: 4 }; ready: Promise<void>;
-  private state = new TiledRenderState(); private cfg: TileRendererConfig; private cb: MapCallbacks; private stagedLod: Container | null = null; private stagedAggregate: Container | null = null; private stagedDetail: Container | null = null; private compatibilityGeneration = 0; private lastCamera = ''; private lodScale = NaN; private lodMarkersVisible = true; private dragBtn = -1; private dragStart = { x: 0, y: 0, cx: 0, cz: 0 }; private selStart: { x: number; z: number } | null = null; private hoverKey = '';
-  constructor(container: HTMLElement, cb: MapCallbacks, config: Partial<TileRendererConfig> = {}) { this.cb = cb; this.cfg = { ...DEFAULT_TILE_RENDERER_CONFIG, ...config }; tileRasterParts(this.cfg.tileSize, this.cfg.maxTextureSize); this.app = new Application(); this.ready = this.app.init({ background: '#0b0e14', antialias: false, resizeTo: container, preference: 'webgl' }).then(() => { container.appendChild(this.app.canvas); this.app.stage.addChild(this.world); // The selection uses block coordinates, so it must share the world's camera transform.
-      this.world.addChild(this.tileLayer, this.lodLayer, this.aggregateLayer, this.detailLayer, this.selGraphics); this.bindInput(container); this.app.ticker.add(() => this.updateTransform()); this.updateTransform(); }); }
-  beginDataGeneration(generation: number) { this.state.begin(generation); this.destroyStaged(); this.stagedLod = new Container(); this.stagedAggregate = new Container(); this.stagedDetail = new Container(); this.stagedLod.visible = false; this.stagedAggregate.visible = false; this.stagedDetail.visible = false; this.lodLayer.addChild(this.stagedLod); this.aggregateLayer.addChild(this.stagedAggregate); this.detailLayer.addChild(this.stagedDetail); this.hoverKey = ''; }
-  setEventTile(generation: number, key: string, events: CpEvent[], ctx: ColorContext): boolean { if (!this.state.canMutate(generation) || !this.stagedDetail || !this.stagedLod) return false; const o = tileOriginFromKey(key, this.cfg.tileSize), hit = createEventHitIndex(events), resources = this.raster(o.x1, o.z1, this.stagedDetail, (c, ox, oz) => { const g = c.getContext('2d')!, im = g.createImageData(c.width, c.height); for (const e of hit.events) { const x = Math.floor(e.x) - o.x1 - ox, z = Math.floor(e.z) - o.z1 - oz; if (x < 0 || z < 0 || x >= c.width || z >= c.height) continue; const [r, gg, b] = eventColor(e, ctx), i = (z * c.width + x) * 4; im.data[i] = r; im.data[i + 1] = gg; im.data[i + 2] = b; im.data[i + 3] = 235; } g.putImageData(im, 0, 0); }); resources.push(this.createDetailLod(events, ctx, this.stagedLod)); const staged = this.state.stageDetail(generation, key, { resources, events: hit.events, hitIndex: hit.byBlock }); if (!staged) resources.forEach(resource => resource.destroy()); return staged; }
-  setAggregateTile(generation: number, key: string, chunks: Chunk[], ctx: ColorContext): boolean { if (!this.state.canMutate(generation) || !this.stagedAggregate || !this.stagedLod) return false; const o = tileOriginFromKey(key, this.cfg.tileSize), max = Math.max(1, ...chunks.map(c => c.cnt)), resources = this.raster(o.x1, o.z1, this.stagedAggregate, (canvas, ox, oz) => { const g = canvas.getContext('2d')!; for (const c of chunks) { const x = c.cx * 16 - o.x1 - ox, z = c.cz * 16 - o.z1 - oz; if (x + 16 <= 0 || z + 16 <= 0 || x >= canvas.width || z >= canvas.height) continue; const [r, gg, b] = this.aggregateColor(c, ctx, max); g.fillStyle = `rgb(${r},${gg},${b})`; g.fillRect(x, z, 16, 16); } }); resources.push(this.createAggregateLod(chunks, ctx, max, this.stagedLod)); const staged = this.state.stageAggregate(generation, key, { resources, chunks: [...chunks] }); if (!staged) resources.forEach(resource => resource.destroy()); return staged; }
-  installEventTile(generation: number, key: string, events: CpEvent[], ctx: ColorContext): boolean { const o = tileOriginFromKey(key, this.cfg.tileSize), hit = createEventHitIndex(events), resources = this.raster(o.x1, o.z1, this.detailLayer, (c, ox, oz) => { const g = c.getContext('2d')!, im = g.createImageData(c.width, c.height); for (const e of hit.events) { const x = Math.floor(e.x) - o.x1 - ox, z = Math.floor(e.z) - o.z1 - oz; if (x < 0 || z < 0 || x >= c.width || z >= c.height) continue; const [r, gg, b] = eventColor(e, ctx), i = (z * c.width + x) * 4; im.data[i] = r; im.data[i + 1] = gg; im.data[i + 2] = b; im.data[i + 3] = 235; } g.putImageData(im, 0, 0); }); resources.push(this.createDetailLod(events, ctx, this.lodLayer)); const installed = this.state.installDetail(generation, key, { resources, events: hit.events, hitIndex: hit.byBlock }); if (!installed) resources.forEach(resource => resource.destroy()); else { this.setAggregateTileVisible(key, false); this.updateLodGraphics(); } return installed; }
-  removeEventTile(generation: number, key: string) { return this.state.removeDetail(generation, key); }
-  commitDataGeneration(generation: number) { if (!this.state.commit(generation)) return false; for (const [layer, staged] of [[this.lodLayer, this.stagedLod], [this.aggregateLayer, this.stagedAggregate], [this.detailLayer, this.stagedDetail]] as const) for (const child of [...layer.children]) if (child !== staged) this.destroyContainer(child as Container); this.stagedLod!.visible = true; this.stagedAggregate!.visible = true; this.stagedDetail!.visible = true; for (const key of this.state.detailTiles.keys()) this.setAggregateTileVisible(key, false); this.stagedLod = null; this.stagedAggregate = null; this.stagedDetail = null; this.lodScale = NaN; this.updateLodGraphics(); this.hoverKey = ''; return true; }
-  cancelDataGeneration(generation: number) { if (!this.state.cancel(generation)) return false; this.destroyStaged(); return true; }
-  clearData() { this.state.clear(); this.lodLayer.removeChildren().forEach(c => this.destroyContainer(c as Container)); this.aggregateLayer.removeChildren().forEach(c => this.destroyContainer(c as Container)); this.detailLayer.removeChildren().forEach(c => this.destroyContainer(c as Container)); this.destroyStaged(); this.hoverKey = ''; }
+  app: Application;
+  world = new Container();
+  tileLayer = new Container();
+  lodLayer = new Container();
+  aggregateLayer = new Container();
+  detailLayer = new Container();
+  selGraphics = new Graphics();
+  cam = { cx: 0, cz: 0, scale: 4 };
+  ready: Promise<void>;
+
+  private state = new TiledRenderState();
+  private cfg: TileRendererConfig;
+  private cb: MapCallbacks;
+  private stagedLod: Container | null = null;
+  private stagedAggregate: Container | null = null;
+  private stagedDetail: Container | null = null;
+  private compatibilityGeneration = 0;
+  private lastCamera = '';
+  private lodScale = NaN;
+  private lodMarkersVisible = true;
+  private dragBtn = -1;
+  private dragStart = { x: 0, y: 0, cx: 0, cz: 0 };
+  private selStart: { x: number; z: number } | null = null;
+  private hoverKey = '';
+
+  constructor(
+    container: HTMLElement,
+    cb: MapCallbacks,
+    config: Partial<TileRendererConfig> = {},
+  ) {
+    this.cb = cb;
+    this.cfg = { ...DEFAULT_TILE_RENDERER_CONFIG, ...config };
+
+    // Validate tile raster dimensions before initializing WebGL.
+    tileRasterParts(this.cfg.tileSize, this.cfg.maxTextureSize);
+
+    this.app = new Application();
+    this.ready = this.app
+      .init({
+        background: '#0b0e14',
+        antialias: false,
+        resizeTo: container,
+        preference: 'webgl',
+      })
+      .then(() => {
+        // Build the world layers in their rendering order.
+        container.appendChild(this.app.canvas);
+        this.app.stage.addChild(this.world);
+
+        // The selection uses block coordinates, so it shares the camera transform.
+        this.world.addChild(
+          this.tileLayer,
+          this.lodLayer,
+          this.aggregateLayer,
+          this.detailLayer,
+          this.selGraphics,
+        );
+
+        this.bindInput(container);
+        this.app.ticker.add(() => this.updateTransform());
+        this.updateTransform();
+      });
+  }
+  /** Start building an invisible replacement set of map tiles. */
+  beginDataGeneration(generation: number) {
+    this.state.begin(generation);
+    this.destroyStaged();
+
+    this.stagedLod = new Container();
+    this.stagedAggregate = new Container();
+    this.stagedDetail = new Container();
+    this.stagedLod.visible = false;
+    this.stagedAggregate.visible = false;
+    this.stagedDetail.visible = false;
+
+    this.lodLayer.addChild(this.stagedLod);
+    this.aggregateLayer.addChild(this.stagedAggregate);
+    this.detailLayer.addChild(this.stagedDetail);
+    this.hoverKey = '';
+  }
+
+  /** Rasterize an event tile and its low-detail marker overlay into staging. */
+  setEventTile(
+    generation: number,
+    key: string,
+    events: CpEvent[],
+    ctx: ColorContext,
+  ): boolean {
+    if (!this.state.canMutate(generation) || !this.stagedDetail || !this.stagedLod) {
+      return false;
+    }
+
+    const o = tileOriginFromKey(key, this.cfg.tileSize);
+    const hit = createEventHitIndex(events);
+    const resources = this.raster(o.x1, o.z1, this.stagedDetail, (c, ox, oz) => {
+      const g = c.getContext('2d')!;
+      const im = g.createImageData(c.width, c.height);
+
+      // Малюємо від старих до нових, щоб найновіша подія залишалась зверху.
+      for (let j = hit.events.length - 1; j >= 0; j--) {
+        const e = hit.events[j];
+        const x = Math.floor(e.x) - o.x1 - ox;
+        const z = Math.floor(e.z) - o.z1 - oz;
+
+        if (x < 0 || z < 0 || x >= c.width || z >= c.height) {
+          continue;
+        }
+
+        const [r, gg, b] = eventColor(e, ctx);
+        const i = (z * c.width + x) * 4;
+        im.data[i] = r;
+        im.data[i + 1] = gg;
+        im.data[i + 2] = b;
+        im.data[i + 3] = 235;
+      }
+
+      g.putImageData(im, 0, 0);
+    });
+
+    resources.push(this.createDetailLod(events, ctx, this.stagedLod));
+    const staged = this.state.stageDetail(generation, key, {
+      resources,
+      events: hit.events,
+      hitIndex: hit.byBlock,
+    });
+
+    if (!staged) {
+      resources.forEach(resource => resource.destroy());
+    }
+
+    return staged;
+  }
+
+  /** Rasterize aggregate chunks and their low-detail markers into staging. */
+  setAggregateTile(
+    generation: number,
+    key: string,
+    chunks: Chunk[],
+    ctx: ColorContext,
+  ): boolean {
+    if (!this.state.canMutate(generation) || !this.stagedAggregate || !this.stagedLod) {
+      return false;
+    }
+
+    const o = tileOriginFromKey(key, this.cfg.tileSize);
+    const max = Math.max(1, ...chunks.map(c => c.cnt));
+    const resources = this.raster(o.x1, o.z1, this.stagedAggregate, (canvas, ox, oz) => {
+      const g = canvas.getContext('2d')!;
+
+      for (const c of chunks) {
+        const x = c.cx * 16 - o.x1 - ox;
+        const z = c.cz * 16 - o.z1 - oz;
+
+        if (x + 16 <= 0 || z + 16 <= 0 || x >= canvas.width || z >= canvas.height) {
+          continue;
+        }
+
+        const [r, gg, b] = this.aggregateColor(c, ctx, max);
+        g.fillStyle = `rgb(${r},${gg},${b})`;
+        g.fillRect(x, z, 16, 16);
+      }
+    });
+
+    resources.push(this.createAggregateLod(chunks, ctx, max, this.stagedLod));
+    const staged = this.state.stageAggregate(generation, key, {
+      resources,
+      chunks: [...chunks],
+    });
+
+    if (!staged) {
+      resources.forEach(resource => resource.destroy());
+    }
+
+    return staged;
+  }
+
+  /** Immediately install a detailed event tile over its aggregate counterpart. */
+  installEventTile(
+    generation: number,
+    key: string,
+    events: CpEvent[],
+    ctx: ColorContext,
+  ): boolean {
+    const o = tileOriginFromKey(key, this.cfg.tileSize);
+    const hit = createEventHitIndex(events);
+    const resources = this.raster(o.x1, o.z1, this.detailLayer, (c, ox, oz) => {
+      const g = c.getContext('2d')!;
+      const im = g.createImageData(c.width, c.height);
+
+      // Малюємо від старих до нових, щоб найновіша подія залишалась зверху.
+      for (let j = hit.events.length - 1; j >= 0; j--) {
+        const e = hit.events[j];
+        const x = Math.floor(e.x) - o.x1 - ox;
+        const z = Math.floor(e.z) - o.z1 - oz;
+
+        if (x < 0 || z < 0 || x >= c.width || z >= c.height) {
+          continue;
+        }
+
+        const [r, gg, b] = eventColor(e, ctx);
+        const i = (z * c.width + x) * 4;
+        im.data[i] = r;
+        im.data[i + 1] = gg;
+        im.data[i + 2] = b;
+        im.data[i + 3] = 235;
+      }
+
+      g.putImageData(im, 0, 0);
+    });
+
+    resources.push(this.createDetailLod(events, ctx, this.lodLayer));
+    const installed = this.state.installDetail(generation, key, {
+      resources,
+      events: hit.events,
+      hitIndex: hit.byBlock,
+    });
+
+    if (!installed) {
+      resources.forEach(resource => resource.destroy());
+    } else {
+      this.setAggregateTileVisible(key, false);
+      this.updateLodGraphics();
+    }
+
+    return installed;
+  }
+
+  removeEventTile(generation: number, key: string) {
+    return this.state.removeDetail(generation, key);
+  }
+
+  /** Atomically show staged tiles and dispose the previous generation. */
+  commitDataGeneration(generation: number) {
+    if (!this.state.commit(generation)) {
+      return false;
+    }
+
+    const layers = [
+      [this.lodLayer, this.stagedLod],
+      [this.aggregateLayer, this.stagedAggregate],
+      [this.detailLayer, this.stagedDetail],
+    ] as const;
+
+    for (const [layer, staged] of layers) {
+      for (const child of [...layer.children]) {
+        if (child !== staged) {
+          this.destroyContainer(child as Container);
+        }
+      }
+    }
+
+    this.stagedLod!.visible = true;
+    this.stagedAggregate!.visible = true;
+    this.stagedDetail!.visible = true;
+
+    for (const key of this.state.detailTiles.keys()) {
+      this.setAggregateTileVisible(key, false);
+    }
+
+    this.stagedLod = null;
+    this.stagedAggregate = null;
+    this.stagedDetail = null;
+    this.lodScale = NaN;
+    this.updateLodGraphics();
+    this.hoverKey = '';
+
+    return true;
+  }
+
+  cancelDataGeneration(generation: number) {
+    if (!this.state.cancel(generation)) {
+      return false;
+    }
+
+    this.destroyStaged();
+    return true;
+  }
+
+  /** Dispose every tile and reset transient pointer state. */
+  clearData() {
+    this.state.clear();
+    this.lodLayer.removeChildren().forEach(c => this.destroyContainer(c as Container));
+    this.aggregateLayer.removeChildren().forEach(c => this.destroyContainer(c as Container));
+    this.detailLayer.removeChildren().forEach(c => this.destroyContainer(c as Container));
+    this.destroyStaged();
+    this.hoverKey = '';
+  }
   /** Locally toggles only the LOD marker overlay; data rasters remain untouched. */
-  setLodMarkersVisible(enabled: boolean) { if (this.lodMarkersVisible === enabled) return; this.lodMarkersVisible = enabled; this.lodScale = NaN; this.updateLodGraphics(); }
-  setEvents(events: CpEvent[], ctx: ColorContext) { const g = ++this.compatibilityGeneration; this.beginDataGeneration(g); const groups = new Map<string, CpEvent[]>(); for (const e of events) { const k = tileKeyForBlock(e.x, e.z, this.cfg.tileSize), a = groups.get(k); if (a) a.push(e); else groups.set(k, [e]); } for (const [k, a] of groups) this.setEventTile(g, k, a, ctx); this.commitDataGeneration(g); }
-  setChunks(chunks: Chunk[], ctx: ColorContext) { const g = ++this.compatibilityGeneration; this.beginDataGeneration(g); const groups = new Map<string, Chunk[]>(); for (const c of chunks) { const k = tileKeyForBlock(c.cx * 16, c.cz * 16, this.cfg.tileSize), a = groups.get(k); if (a) a.push(c); else groups.set(k, [c]); } for (const [k, a] of groups) this.setAggregateTile(g, k, a, ctx); this.commitDataGeneration(g); }
-  private raster(x: number, z: number, layer: Container, draw: (canvas: HTMLCanvasElement, ox: number, oz: number) => void): PixiResource[] { return tileRasterParts(this.cfg.tileSize, this.cfg.maxTextureSize).map(p => { const c = document.createElement('canvas'); c.width = p.width; c.height = p.height; draw(c, p.x, p.z); const t = Texture.from(c); t.source.scaleMode = 'nearest'; const s = new Sprite(t); s.position.set(x + p.x, z + p.z); layer.addChild(s); let destroyed = false; return { displayObject: s, destroy: () => { if (destroyed) return; destroyed = true; s.removeFromParent(); s.destroy({ texture: true, textureSource: true }); } }; }); }
-  private aggregateColor(chunk: Chunk, ctx: ColorContext, max: number): [number, number, number] { const d = chunk.dominant, rgb = ctx.mode === 'action' && d ? actionColor(d.src, d.action) : d ? uuidColor(d.uuid, d.nick) : [120, 120, 120], k = .5 + .5 * Math.sqrt(chunk.cnt / max); return [Math.round(rgb[0] * k), Math.round(rgb[1] * k), Math.round(rgb[2] * k)]; }
+  setLodMarkersVisible(enabled: boolean) {
+    if (this.lodMarkersVisible === enabled) {
+      return;
+    }
+
+    this.lodMarkersVisible = enabled;
+    this.lodScale = NaN;
+    this.updateLodGraphics();
+  }
+
+  /** Compatibility API: group all events into transport tiles before rendering. */
+  setEvents(events: CpEvent[], ctx: ColorContext) {
+    const g = ++this.compatibilityGeneration;
+    this.beginDataGeneration(g);
+
+    const groups = new Map<string, CpEvent[]>();
+    for (const e of events) {
+      const k = tileKeyForBlock(e.x, e.z, this.cfg.tileSize);
+      const a = groups.get(k);
+
+      if (a) {
+        a.push(e);
+      } else {
+        groups.set(k, [e]);
+      }
+    }
+
+    for (const [k, a] of groups) {
+      this.setEventTile(g, k, a, ctx);
+    }
+
+    this.commitDataGeneration(g);
+  }
+
+  /** Compatibility API: group aggregate chunks into transport tiles. */
+  setChunks(chunks: Chunk[], ctx: ColorContext) {
+    const g = ++this.compatibilityGeneration;
+    this.beginDataGeneration(g);
+
+    const groups = new Map<string, Chunk[]>();
+    for (const c of chunks) {
+      const k = tileKeyForBlock(c.cx * 16, c.cz * 16, this.cfg.tileSize);
+      const a = groups.get(k);
+
+      if (a) {
+        a.push(c);
+      } else {
+        groups.set(k, [c]);
+      }
+    }
+
+    for (const [k, a] of groups) {
+      this.setAggregateTile(g, k, a, ctx);
+    }
+
+    this.commitDataGeneration(g);
+  }
+
+  /** Convert bounded canvas sections into Pixi sprites with safe disposal. */
+  private raster(
+    x: number,
+    z: number,
+    layer: Container,
+    draw: (canvas: HTMLCanvasElement, ox: number, oz: number) => void,
+  ): PixiResource[] {
+    return tileRasterParts(this.cfg.tileSize, this.cfg.maxTextureSize).map(p => {
+      const c = document.createElement('canvas');
+      c.width = p.width;
+      c.height = p.height;
+      draw(c, p.x, p.z);
+
+      const t = Texture.from(c);
+      t.source.scaleMode = 'nearest';
+
+      const s = new Sprite(t);
+      s.position.set(x + p.x, z + p.z);
+      layer.addChild(s);
+
+      let destroyed = false;
+      return {
+        displayObject: s,
+        destroy: () => {
+          if (destroyed) {
+            return;
+          }
+
+          destroyed = true;
+          s.removeFromParent();
+          s.destroy({ texture: true, textureSource: true });
+        },
+      };
+    });
+  }
+
+  /** Derive the dominant chunk color and brighten it by its relative count. */
+  private aggregateColor(
+    chunk: Chunk,
+    ctx: ColorContext,
+    max: number,
+  ): [number, number, number] {
+    const d = chunk.dominant;
+    const rgb =
+      ctx.mode === 'action' && d
+        ? actionColor(d.src, d.action)
+        : d
+          ? uuidColor(d.uuid, d.nick)
+          : [120, 120, 120];
+    const k = 0.5 + 0.5 * Math.sqrt(chunk.cnt / max);
+
+    return [
+      Math.round(rgb[0] * k),
+      Math.round(rgb[1] * k),
+      Math.round(rgb[2] * k),
+    ];
+  }
   /** Bounded graphics per transport tile: no viewport-sized canvas or API work. */
-  private createLodResource(layer: Container, cells: { x: number; z: number; color: number }[]): PixiResource { const container = new Container(), graphics = new Graphics(); container.addChild(graphics); layer.addChild(container); const draw = (scale: number) => { graphics.clear(); graphics.visible = shouldDisplayLodMarkers(this.lodMarkersVisible, scale); if (!graphics.visible) return; const size = MIN_LOD_MARKER_SCREEN_PX / scale, half = size / 2, outline = Math.max(1 / scale, size * 0.16); for (const cell of cells) graphics.rect(cell.x + 8 - half, cell.z + 8 - half, size, size).fill({ color: cell.color, alpha: 1 }).stroke({ color: 0xffffff, alpha: 0.95, width: outline }); }; draw(this.cam.scale); let destroyed = false; return { displayObject: container, updateForScale: draw, destroy: () => { if (destroyed) return; destroyed = true; container.removeFromParent(); container.destroy({ children: true }); } }; }
-  private createDetailLod(events: CpEvent[], ctx: ColorContext, layer: Container): PixiResource { return this.createLodResource(layer, detailLodCells(events).map(({ x, z, event }) => { const [r, g, b] = eventColor(event, ctx); return { x, z, color: (r << 16) | (g << 8) | b }; })); }
-  private createAggregateLod(chunks: Chunk[], ctx: ColorContext, max: number, layer: Container): PixiResource { return this.createLodResource(layer, aggregateLodCells(chunks).map(({ x, z, chunk }) => { const [r, g, b] = this.aggregateColor(chunk, ctx, max); return { x, z, color: (r << 16) | (g << 8) | b }; })); }
-  private setAggregateTileVisible(key: string, visible: boolean) { this.state.aggregateTiles.get(key)?.resources.forEach(resource => (resource as PixiResource).displayObject.visible = visible); }
-  private updateLodGraphics() { if (this.lodScale === this.cam.scale) return; this.lodScale = this.cam.scale; for (const tile of [...this.state.aggregateTiles.values(), ...this.state.detailTiles.values()]) for (const resource of tile.resources) (resource as PixiResource).updateForScale?.(this.cam.scale); }
-  private destroyStaged() { this.destroyContainer(this.stagedLod); this.destroyContainer(this.stagedAggregate); this.destroyContainer(this.stagedDetail); this.stagedLod = null; this.stagedAggregate = null; this.stagedDetail = null; }
-  private destroyContainer(container: Container | null) { if (!container) return; container.removeFromParent(); container.destroy({ children: false }); }
-  private updateTransform() { this.world.scale.set(this.cam.scale); this.updateLodGraphics(); const w = this.app.renderer.width, h = this.app.renderer.height; this.world.position.set(w / 2 - this.cam.cx * this.cam.scale, h / 2 - this.cam.cz * this.cam.scale); const key = `${this.cam.scale},${this.cam.cx},${this.cam.cz},${w},${h}`; if (key !== this.lastCamera) { this.lastCamera = key; this.cb.onCameraChange(this.cam.scale, this.cam.cx, this.cam.cz); } }
-  screenToBlock(sx: number, sy: number): [number, number] { const r = (this.app.canvas as HTMLCanvasElement).getBoundingClientRect(); return [(sx - r.left - this.world.x) / this.cam.scale, (sy - r.top - this.world.y) / this.cam.scale]; }
-  private bindInput(el: HTMLElement) { el.addEventListener('contextmenu', e => e.preventDefault()); el.addEventListener('pointerdown', e => { this.dragBtn = e.button; this.dragStart = { x: e.clientX, y: e.clientY, cx: this.cam.cx, cz: this.cam.cz }; if (e.button === 2) { const [x, z] = this.screenToBlock(e.clientX, e.clientY); this.selStart = { x, z }; } }); window.addEventListener('pointermove', e => { const r = el.getBoundingClientRect(), inMap = e.clientX >= r.left && e.clientX <= r.right && e.clientY >= r.top && e.clientY <= r.bottom, [x, z] = this.screenToBlock(e.clientX, e.clientY); this.cb.onCursorMove?.(inMap ? x : NaN, inMap ? z : NaN); if (this.dragBtn === 0) { this.cam.cx = this.dragStart.cx - (e.clientX - this.dragStart.x) / this.cam.scale; this.cam.cz = this.dragStart.cz - (e.clientY - this.dragStart.y) / this.cam.scale; } else if (this.dragBtn === 2 && this.selStart) this.drawSelection(x, z); else if (this.dragBtn === -1 && inMap) this.hover(x, z, e.clientX, e.clientY); }); window.addEventListener('pointerup', e => { if (this.dragBtn === 2 && this.selStart) { const [x, z] = this.screenToBlock(e.clientX, e.clientY), s = this.selStart, bbox = { x1: Math.min(s.x, x), x2: Math.max(s.x, x), z1: Math.min(s.z, z), z2: Math.max(s.z, z) }; this.selStart = null; this.selGraphics.clear(); this.cb.onSelection((bbox.x2 - bbox.x1) * (bbox.z2 - bbox.z1) > 4 ? bbox : null); } else if (this.dragBtn === 0 && Math.hypot(e.clientX - this.dragStart.x, e.clientY - this.dragStart.y) < 4) { const [x, z] = this.screenToBlock(e.clientX, e.clientY); this.click(x, z); } this.dragBtn = -1; }); el.addEventListener('wheel', e => { e.preventDefault(); const [x, z] = this.screenToBlock(e.clientX, e.clientY), delta = this.wheelDeltaPixels(e, el), next = Math.min(MAX_SCALE, Math.max(MIN_SCALE, this.cam.scale * Math.exp(-delta * WHEEL_ZOOM_SENSITIVITY))), actual = next / this.cam.scale; this.cam.scale = next; this.cam.cx = x + (this.cam.cx - x) / actual; this.cam.cz = z + (this.cam.cz - z) / actual; }, { passive: false }); }
+  private createLodResource(
+    layer: Container,
+    cells: { x: number; z: number; color: number }[],
+  ): PixiResource {
+    const container = new Container();
+    const graphics = new Graphics();
+    container.addChild(graphics);
+    layer.addChild(container);
+
+    const draw = (scale: number) => {
+      graphics.clear();
+      graphics.visible = shouldDisplayLodMarkers(this.lodMarkersVisible, scale);
+
+      if (!graphics.visible) {
+        return;
+      }
+
+      const size = MIN_LOD_MARKER_SCREEN_PX / scale;
+      const half = size / 2;
+      const outline = Math.max(1 / scale, size * 0.16);
+
+      for (const cell of cells) {
+        graphics
+          .rect(cell.x + 8 - half, cell.z + 8 - half, size, size)
+          .fill({ color: cell.color, alpha: 1 })
+          .stroke({ color: 0xffffff, alpha: 0.95, width: outline });
+      }
+    };
+
+    draw(this.cam.scale);
+
+    let destroyed = false;
+    return {
+      displayObject: container,
+      updateForScale: draw,
+      destroy: () => {
+        if (destroyed) {
+          return;
+        }
+
+        destroyed = true;
+        container.removeFromParent();
+        container.destroy({ children: true });
+      },
+    };
+  }
+
+  private createDetailLod(
+    events: CpEvent[],
+    ctx: ColorContext,
+    layer: Container,
+  ): PixiResource {
+    return this.createLodResource(
+      layer,
+      detailLodCells(events).map(({ x, z, event }) => {
+        const [r, g, b] = eventColor(event, ctx);
+        return { x, z, color: (r << 16) | (g << 8) | b };
+      }),
+    );
+  }
+
+  private createAggregateLod(
+    chunks: Chunk[],
+    ctx: ColorContext,
+    max: number,
+    layer: Container,
+  ): PixiResource {
+    return this.createLodResource(
+      layer,
+      aggregateLodCells(chunks).map(({ x, z, chunk }) => {
+        const [r, gg, b] = this.aggregateColor(chunk, ctx, max);
+        return { x, z, color: (r << 16) | (gg << 8) | b };
+      }),
+    );
+  }
+
+  private setAggregateTileVisible(key: string, visible: boolean) {
+    this.state.aggregateTiles
+      .get(key)
+      ?.resources.forEach(resource => {
+        (resource as PixiResource).displayObject.visible = visible;
+      });
+  }
+
+  /** Redraw markers only when the camera scale has changed. */
+  private updateLodGraphics() {
+    if (this.lodScale === this.cam.scale) {
+      return;
+    }
+
+    this.lodScale = this.cam.scale;
+    const tiles = [
+      ...this.state.aggregateTiles.values(),
+      ...this.state.detailTiles.values(),
+    ];
+
+    for (const tile of tiles) {
+      for (const resource of tile.resources) {
+        (resource as PixiResource).updateForScale?.(this.cam.scale);
+      }
+    }
+  }
+  /** Remove containers built for an uncommitted data generation. */
+  private destroyStaged() {
+    this.destroyContainer(this.stagedLod);
+    this.destroyContainer(this.stagedAggregate);
+    this.destroyContainer(this.stagedDetail);
+    this.stagedLod = null;
+    this.stagedAggregate = null;
+    this.stagedDetail = null;
+  }
+
+  private destroyContainer(container: Container | null) {
+    if (!container) {
+      return;
+    }
+
+    container.removeFromParent();
+    container.destroy({ children: false });
+  }
+
+  /** Apply camera state to the Pixi world and notify consumers of a change. */
+  private updateTransform() {
+    this.world.scale.set(this.cam.scale);
+    this.updateLodGraphics();
+
+    const w = this.app.renderer.width;
+    const h = this.app.renderer.height;
+    this.world.position.set(
+      w / 2 - this.cam.cx * this.cam.scale,
+      h / 2 - this.cam.cz * this.cam.scale,
+    );
+
+    const key = `${this.cam.scale},${this.cam.cx},${this.cam.cz},${w},${h}`;
+    if (key !== this.lastCamera) {
+      this.lastCamera = key;
+      this.cb.onCameraChange(this.cam.scale, this.cam.cx, this.cam.cz);
+    }
+  }
+
+  /** Convert screen coordinates to world block coordinates. */
+  screenToBlock(sx: number, sy: number): [number, number] {
+    const r = (this.app.canvas as HTMLCanvasElement).getBoundingClientRect();
+    return [
+      (sx - r.left - this.world.x) / this.cam.scale,
+      (sy - r.top - this.world.y) / this.cam.scale,
+    ];
+  }
+
+  /** Bind panning, selection, hover, click, and cursor-centered zoom controls. */
+  private bindInput(el: HTMLElement) {
+    el.addEventListener('contextmenu', e => e.preventDefault());
+
+    el.addEventListener('pointerdown', e => {
+      this.dragBtn = e.button;
+      this.dragStart = {
+        x: e.clientX,
+        y: e.clientY,
+        cx: this.cam.cx,
+        cz: this.cam.cz,
+      };
+
+      if (e.button === 2) {
+        const [x, z] = this.screenToBlock(e.clientX, e.clientY);
+        this.selStart = { x, z };
+      }
+    });
+
+    window.addEventListener('pointermove', e => {
+      const r = el.getBoundingClientRect();
+      const inMap =
+        e.clientX >= r.left &&
+        e.clientX <= r.right &&
+        e.clientY >= r.top &&
+        e.clientY <= r.bottom;
+      const [x, z] = this.screenToBlock(e.clientX, e.clientY);
+
+      this.cb.onCursorMove?.(inMap ? x : NaN, inMap ? z : NaN);
+
+      if (this.dragBtn === 0) {
+        this.cam.cx =
+          this.dragStart.cx - (e.clientX - this.dragStart.x) / this.cam.scale;
+        this.cam.cz =
+          this.dragStart.cz - (e.clientY - this.dragStart.y) / this.cam.scale;
+      } else if (this.dragBtn === 2 && this.selStart) {
+        this.drawSelection(x, z);
+      } else if (this.dragBtn === -1 && inMap) {
+        this.hover(x, z, e.clientX, e.clientY);
+      }
+    });
+
+    window.addEventListener('pointerup', e => {
+      if (this.dragBtn === 2 && this.selStart) {
+        const [x, z] = this.screenToBlock(e.clientX, e.clientY);
+        const s = this.selStart;
+        const bbox = {
+          x1: Math.min(s.x, x),
+          x2: Math.max(s.x, x),
+          z1: Math.min(s.z, z),
+          z2: Math.max(s.z, z),
+        };
+
+        this.selStart = null;
+        this.selGraphics.clear();
+        this.cb.onSelection(
+          (bbox.x2 - bbox.x1) * (bbox.z2 - bbox.z1) > 4 ? bbox : null,
+        );
+      } else if (
+        this.dragBtn === 0 &&
+        Math.hypot(e.clientX - this.dragStart.x, e.clientY - this.dragStart.y) < 4
+      ) {
+        const [x, z] = this.screenToBlock(e.clientX, e.clientY);
+        this.click(x, z);
+      }
+
+      this.dragBtn = -1;
+    });
+
+    el.addEventListener(
+      'wheel',
+      e => {
+        e.preventDefault();
+
+        const [x, z] = this.screenToBlock(e.clientX, e.clientY);
+        const delta = this.wheelDeltaPixels(e, el);
+        const next = Math.min(
+          MAX_SCALE,
+          Math.max(
+            MIN_SCALE,
+            this.cam.scale * Math.exp(-delta * WHEEL_ZOOM_SENSITIVITY),
+          ),
+        );
+        const actual = next / this.cam.scale;
+
+        this.cam.scale = next;
+        this.cam.cx = x + (this.cam.cx - x) / actual;
+        this.cam.cz = z + (this.cam.cz - z) / actual;
+      },
+      { passive: false },
+    );
+  }
   /** Normalizes mouse-wheel, touchpad, and smooth-scroll deltas to CSS pixels. */
-  private wheelDeltaPixels(event: WheelEvent, el: HTMLElement) { const unit = event.deltaMode === WheelEvent.DOM_DELTA_LINE ? WHEEL_LINE_HEIGHT_PX : event.deltaMode === WheelEvent.DOM_DELTA_PAGE ? el.clientHeight : 1; return Math.max(-200, Math.min(200, event.deltaY * unit)); }
-  private drawSelection(x: number, z: number) { const s = this.selStart!, x1 = Math.min(s.x, x), x2 = Math.max(s.x, x), z1 = Math.min(s.z, z), z2 = Math.max(s.z, z); this.selGraphics.clear().rect(x1, z1, x2 - x1, z2 - z1).fill({ color: 0x4fc3f7, alpha: 0.12 }).stroke({ color: 0x4fc3f7, width: 1 / this.cam.scale }); }
-  private eventsAt(x: number, z: number) { return this.state.detailTiles.get(tileKeyForBlock(x, z, this.cfg.tileSize))?.hitIndex.get(`${Math.floor(x)},${Math.floor(z)}`) ?? []; }
-  private chunksAt(x: number, z: number) { const key = tileKeyForBlock(x, z, this.cfg.tileSize); return this.state.aggregateTiles.get(key)?.chunks.filter(c => c.cx === coordinateToTile(x, 16) && c.cz === coordinateToTile(z, 16)) ?? []; }
-  private hover(x: number, z: number, sx: number, sy: number) { const k = `${Math.floor(x)},${Math.floor(z)}`; if (k === this.hoverKey) return; this.hoverKey = k; const transportKey = tileKeyForBlock(x, z, this.cfg.tileSize); if (this.state.detailTiles.has(transportKey)) { this.cb.onAggregateHover?.(null, sx, sy); this.cb.onHover(this.eventsAt(x, z), sx, sy); } else { this.cb.onHover(null, sx, sy); const chunks = this.chunksAt(x, z); this.cb.onAggregateHover?.(chunks.length ? chunks : null, sx, sy); } }
-  private click(x: number, z: number) { const events = this.eventsAt(x, z); if (events.length) { this.cb.onClick(events); return; } const chunks = this.chunksAt(x, z); this.cb.onAggregateClick?.(chunks); if (chunks.length) this.cb.onPrioritizeTile?.(tileKeyForBlock(chunks[0].cx * 16, chunks[0].cz * 16, this.cfg.tileSize)); this.cb.onClick([]); }
-  fitTo(x1: number, z1: number, x2: number, z2: number) { this.cam.cx = (x1 + x2) / 2; this.cam.cz = (z1 + z2) / 2; this.cam.scale = Math.min(MAX_SCALE, Math.max(MIN_SCALE, Math.min(this.app.renderer.width / Math.max(1, x2 - x1 + 8), this.app.renderer.height / Math.max(1, z2 - z1 + 8)))); this.updateTransform(); }
-  fitToResults(bbox: { x1: number; z1: number; x2: number; z2: number } | null) { if (bbox) this.fitTo(bbox.x1, bbox.z1, bbox.x2, bbox.z2); }
-  getMode() { return this.state.detailTiles.size ? 'events' : 'aggregate'; }
+  private wheelDeltaPixels(event: WheelEvent, el: HTMLElement) {
+    const unit =
+      event.deltaMode === WheelEvent.DOM_DELTA_LINE
+        ? WHEEL_LINE_HEIGHT_PX
+        : event.deltaMode === WheelEvent.DOM_DELTA_PAGE
+          ? el.clientHeight
+          : 1;
+    return Math.max(-200, Math.min(200, event.deltaY * unit));
+  }
+
+  /** Draw the current right-button selection rectangle in world coordinates. */
+  private drawSelection(x: number, z: number) {
+    const s = this.selStart!;
+    const x1 = Math.min(s.x, x);
+    const x2 = Math.max(s.x, x);
+    const z1 = Math.min(s.z, z);
+    const z2 = Math.max(s.z, z);
+
+    this.selGraphics
+      .clear()
+      .rect(x1, z1, x2 - x1, z2 - z1)
+      .fill({ color: 0x4fc3f7, alpha: 0.12 })
+      .stroke({ color: 0x4fc3f7, width: 1 / this.cam.scale });
+  }
+
+  private eventsAt(x: number, z: number) {
+    return (
+      this.state.detailTiles
+        .get(tileKeyForBlock(x, z, this.cfg.tileSize))
+        ?.hitIndex.get(`${Math.floor(x)},${Math.floor(z)}`) ?? []
+    );
+  }
+
+  private chunksAt(x: number, z: number) {
+    const key = tileKeyForBlock(x, z, this.cfg.tileSize);
+    return (
+      this.state.aggregateTiles
+        .get(key)
+        ?.chunks.filter(
+          c => c.cx === coordinateToTile(x, 16) && c.cz === coordinateToTile(z, 16),
+        ) ?? []
+    );
+  }
+
+  /** Notify the appropriate hover target for the block under the pointer. */
+  private hover(x: number, z: number, sx: number, sy: number) {
+    const k = `${Math.floor(x)},${Math.floor(z)}`;
+    if (k === this.hoverKey) {
+      return;
+    }
+
+    this.hoverKey = k;
+    const transportKey = tileKeyForBlock(x, z, this.cfg.tileSize);
+
+    if (this.state.detailTiles.has(transportKey)) {
+      this.cb.onAggregateHover?.(null, sx, sy);
+      this.cb.onHover(this.eventsAt(x, z), sx, sy);
+    } else {
+      this.cb.onHover(null, sx, sy);
+      const chunks = this.chunksAt(x, z);
+      this.cb.onAggregateHover?.(chunks.length ? chunks : null, sx, sy);
+    }
+  }
+
+  /** Prefer exact event clicks; otherwise select and prioritize aggregate chunks. */
+  private click(x: number, z: number) {
+    const events = this.eventsAt(x, z);
+    if (events.length) {
+      this.cb.onClick(events);
+      return;
+    }
+
+    const chunks = this.chunksAt(x, z);
+    this.cb.onAggregateClick?.(chunks);
+
+    if (chunks.length) {
+      this.cb.onPrioritizeTile?.(
+        tileKeyForBlock(chunks[0].cx * 16, chunks[0].cz * 16, this.cfg.tileSize),
+      );
+    }
+
+    this.cb.onClick([]);
+  }
+
+  /** Center and zoom the camera so the supplied world bounds are visible. */
+  fitTo(x1: number, z1: number, x2: number, z2: number) {
+    this.cam.cx = (x1 + x2) / 2;
+    this.cam.cz = (z1 + z2) / 2;
+    this.cam.scale = Math.min(
+      MAX_SCALE,
+      Math.max(
+        MIN_SCALE,
+        Math.min(
+          this.app.renderer.width / Math.max(1, x2 - x1 + 8),
+          this.app.renderer.height / Math.max(1, z2 - z1 + 8),
+        ),
+      ),
+    );
+    this.updateTransform();
+  }
+
+  fitToResults(bbox: { x1: number; z1: number; x2: number; z2: number } | null) {
+    if (bbox) {
+      this.fitTo(bbox.x1, bbox.z1, bbox.x2, bbox.z2);
+    }
+  }
+
+  getMode() {
+    return this.state.detailTiles.size ? 'events' : 'aggregate';
+  }
 }

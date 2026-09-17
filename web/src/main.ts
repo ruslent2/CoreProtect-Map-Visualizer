@@ -9,24 +9,108 @@ import { ACTION_LABELS, eventColor, rgbHex } from './colors';
 import { dedupeEvents, distributeEventsByTile, sortOccupiedTiles, tileBounds, tileKey } from './tile-utils';
 import { DetailQueueSession, DetailTileQueue, ManualScanOrchestrator } from './scan-pipeline';
 
-interface AppliedRequest { filters: Filters; center: { x: number; z: number; scale: number }; config: ApiConfig; snapshot: SourceSnapshot; generation: number; aggregateTotal?: number; aggregateTileTotal?: number; }
+interface AppliedRequest {
+  filters: Filters;
+  center: { x: number; z: number; scale: number };
+  config: ApiConfig;
+  snapshot: SourceSnapshot;
+  generation: number;
+  aggregateTotal?: number;
+  aggregateTileTotal?: number;
+}
+
+// --- Shared application state ---
 const $ = (id: string) => document.getElementById(id)!;
-const filtersEl = $('filters'), inspectorEl = $('inspector'), tooltipEl = $('tooltip') as HTMLDivElement, statusEl = $('statusbar'), legendEl = $('legend'), hudEl = $('world-hud');
-let draftFilters: Filters = defaultFilters(), draftTime: TimeSelection = { mode: 'default', from: null, to: null };
+const filtersEl = $('filters');
+const inspectorEl = $('inspector');
+const tooltipEl = $('tooltip') as HTMLDivElement;
+const statusEl = $('statusbar');
+const legendEl = $('legend');
+const hudEl = $('world-hud');
+
+let draftFilters: Filters = defaultFilters();
+let draftTime: TimeSelection = { mode: 'default', from: null, to: null };
 let meta: MetaData = { worlds: [], users: [], materials: [], actions: [] };
-let config: ApiConfig, map: MapView, bluemap: BluemapLayer, appliedRequest: AppliedRequest | null = null, controller: AbortController | null = null;
+let config: ApiConfig;
+let map: MapView;
+let bluemap: BluemapLayer;
+let appliedRequest: AppliedRequest | null = null;
+let controller: AbortController | null = null;
 const scan = new ManualScanOrchestrator();
-let generation = 0, dirty = false, status = 'Натисніть «Оновити дані»', rangeError: string | null = null, resultBounds: BBox | null = null, loading = false, stopped = false, bluemapOpacity = 0.9, lodMarkersVisible = true, detailPriority: ((key: string) => void) | null = null;
+let generation = 0;
+let dirty = false;
+let status = 'Натисніть «Оновити дані»';
+let rangeError: string | null = null;
+let resultBounds: BBox | null = null;
+let loading = false;
+let stopped = false;
+let bluemapOpacity = 0.9;
+let lodMarkersVisible = true;
+let detailPriority: ((key: string) => void) | null = null;
 let detailSession: DetailQueueSession | null = null, detailRun: Promise<void> | null = null;
 const detailSingleRuns = new Set<Promise<void>>();
 let inspectorRequest = 0;
-let cursorX: number | null = null, cursorZ: number | null = null;
-let loadingStartedAt: number | null = null, loadingTimer: number | null = null;
+let cursorX: number | null = null;
+let cursorZ: number | null = null;
+let loadingStartedAt: number | null = null;
+let loadingTimer: number | null = null;
+let resultUsers: { nick: string | null; uuid: string | null }[] | null = null;
 
-function cloneFilters(filters: Filters): Filters { return { ...filters, bbox: filters.bbox && { ...filters.bbox }, users: [...filters.users], actions: [...filters.actions], materials: [...filters.materials] }; }
-function isCurrent(request: AppliedRequest) { return appliedRequest?.generation === request.generation && !controller?.signal.aborted; }
-function controls(): ScanControls { return { status, error: rangeError, canShowAll: !!resultBounds, canStop: loading || (!!detailSession && !detailSession.isStopped), canContinueDetails: !!detailSession?.isPaused, bluemapOpacity, lodMarkersVisible, onBluemapOpacity: alpha => { bluemapOpacity = alpha; bluemap?.setOpacity(alpha); }, onLodMarkersVisible: enabled => { lodMarkersVisible = enabled; map?.setLodMarkersVisible(enabled); }, onApply: apply, onStop: stop, onContinueDetails: startMassDetails, onShowAll: () => resultBounds && map.fitToResults(resultBounds) }; }
-function rebuild() { buildFilterPanel(filtersEl, draftFilters, draftTime, meta, onFiltersChanged, onTimeChanged, controls()); buildLegend(legendEl, draftFilters, meta); }
+function cloneFilters(filters: Filters): Filters {
+  return {
+    ...filters,
+    bbox: filters.bbox && { ...filters.bbox },
+    users: [...filters.users],
+    actions: [...filters.actions],
+    materials: [...filters.materials],
+  };
+}
+
+function isCurrent(request: AppliedRequest) {
+  return appliedRequest?.generation === request.generation && !controller?.signal.aborted;
+}
+
+// Build callbacks and flags consumed by the filter panel.
+function controls(): ScanControls {
+  return {
+    status,
+    error: rangeError,
+    canShowAll: !!resultBounds,
+    canStop: loading || (!!detailSession && !detailSession.isStopped),
+    canContinueDetails: !!detailSession?.isPaused,
+    bluemapOpacity,
+    lodMarkersVisible,
+    onBluemapOpacity: alpha => {
+      bluemapOpacity = alpha;
+      bluemap?.setOpacity(alpha);
+    },
+    onLodMarkersVisible: enabled => {
+      lodMarkersVisible = enabled;
+      map?.setLodMarkersVisible(enabled);
+    },
+    onApply: apply,
+    onStop: stop,
+    onContinueDetails: startMassDetails,
+    onShowAll: () => resultBounds && map.fitToResults(resultBounds),
+  };
+}
+let deferredFilterRebuild = false;
+function rebuild() {
+  const active = document.activeElement;
+  // Асинхронні статуси також можуть спричинити перебудову, тому відкладаємо її,
+  // доки користувач редагує нативне поле дати й часу.
+  if (active instanceof HTMLInputElement && active.matches('[data-preserve-on-rebuild]') && filtersEl.contains(active)) {
+    if (!deferredFilterRebuild) {
+      deferredFilterRebuild = true;
+      active.addEventListener('blur', () => window.setTimeout(() => { deferredFilterRebuild = false; rebuild(); }, 0), { once: true });
+    }
+    buildLegend(legendEl, appliedRequest?.filters ?? draftFilters, resultUsers);
+    return;
+  }
+  deferredFilterRebuild = false;
+  buildFilterPanel(filtersEl, draftFilters, draftTime, meta, onFiltersChanged, onTimeChanged, controls());
+  buildLegend(legendEl, appliedRequest?.filters ?? draftFilters, resultUsers);
+}
 function formatElapsed(milliseconds: number) {
   const seconds = Math.floor(milliseconds / 1000);
   return `${String(Math.floor(seconds / 60)).padStart(2, '0')}:${String(seconds % 60).padStart(2, '0')}`;
@@ -49,28 +133,131 @@ function setLoading(value: boolean) {
   }
   renderStatus();
 }
-function showStatus(text: string, warning = false) { status = text; renderStatus(); statusEl.style.color = warning ? '#ff8a80' : 'var(--muted)'; rebuild(); }
-function markDirty() { scan.markDirty(); dirty = scan.dirty; if (!loading) showStatus('Є незастосовані зміни · Ctrl+Enter'); else rebuild(); }
-function onFiltersChanged(patch: Partial<Filters>) { Object.assign(draftFilters, patch); if (patch.world && bluemap) { bluemap.setWorld(draftFilters.world); updateHud(); } markDirty(); }
-function onTimeChanged(time: TimeSelection) { draftTime = time; rangeError = null; markDirty(); }
+function showStatus(text: string, warning = false) {
+  status = text;
+  renderStatus();
+  statusEl.style.color = warning ? '#ff8a80' : 'var(--muted)';
+  rebuild();
+}
+
+function markDirty() {
+  scan.markDirty();
+  dirty = scan.dirty;
+  if (!loading) showStatus('Є незастосовані зміни · Ctrl+Enter');
+  else rebuild();
+}
+
+function onFiltersChanged(patch: Partial<Filters>) {
+  Object.assign(draftFilters, patch);
+  if (patch.world && bluemap) {
+    bluemap.setWorld(draftFilters.world);
+    updateHud();
+  }
+  markDirty();
+}
+function onTimeChanged(time: TimeSelection, preserveEditor = false) {
+  draftTime = time;
+  rangeError = null;
+  if (!preserveEditor) { markDirty(); return; }
+  scan.markDirty();
+  dirty = scan.dirty;
+  if (!loading) {
+    status = 'Є незастосовані зміни · Ctrl+Enter';
+    statusEl.style.color = 'var(--muted)';
+  }
+  renderStatus();
+}
 function updateHud() {
   const coordinates = cursorX == null || cursorZ == null
     ? 'X: — Z: —'
     : `X: ${Math.floor(cursorX)} Z: ${Math.floor(cursorZ)}`;
-  hudEl.textContent = `Світ: ${draftFilters.world}${appliedRequest && appliedRequest.filters.world !== draftFilters.world ? ` · показані дані: ${appliedRequest.filters.world}` : ''} · ${coordinates} · масштаб 1:${(1 / map.cam.scale).toFixed(1)}`;
+  const displayedWorld = appliedRequest?.filters.world;
+  const differentDisplayedWorld = displayedWorld && displayedWorld !== draftFilters.world
+    ? ` · показані дані: ${displayedWorld}`
+    : '';
+  const scale = (1 / map.cam.scale).toFixed(1);
+
+  hudEl.textContent = [
+    `Світ: ${draftFilters.world}${differentDisplayedWorld}`,
+    coordinates,
+    `масштаб 1:${scale}`,
+  ].join(' · ');
 }
-function onCamera(scale: number, cx: number, cz: number) { updateHud(); if (!bluemap) return; const w = map.app.renderer.width / scale, h = map.app.renderer.height / scale; bluemap.update({ x1: cx - w / 2, z1: cz - h / 2, x2: cx + w / 2, z2: cz + h / 2, pxPerBlock: scale }); }
+function onCamera(scale: number, cx: number, cz: number) {
+  updateHud();
+  if (!bluemap) return;
+
+  const w = map.app.renderer.width / scale;
+  const h = map.app.renderer.height / scale;
+  bluemap.update({
+    x1: cx - w / 2,
+    z1: cz - h / 2,
+    x2: cx + w / 2,
+    z2: cz + h / 2,
+    pxPerBlock: scale,
+  });
+}
 function onCursorMove(x: number, z: number) {
   cursorX = Number.isFinite(x) ? x : null;
   cursorZ = Number.isFinite(z) ? z : null;
   updateHud();
 }
 // Detail tiles may arrive after a draft edit, so raster colors use the applied snapshot.
-function colorContext(filters: Filters = draftFilters) { return { mode: filters.mode, mix: filters.mix, tMin: 0, tMax: 1 }; }
-function abortError(error: unknown) { return error instanceof DOMException && error.name === 'AbortError'; }
+function colorContext(filters: Filters = draftFilters) {
+  return {
+    mode: filters.mode,
+    mix: filters.mix,
+    tMin: 0,
+    tMax: 1,
+  };
+}
 
-async function fetchAll(request: AppliedRequest) { const all: CpEvent[] = []; let cursor: string | null = null; do { const page = await apiQueryPage(request.filters, { snapshot: request.snapshot, cursor, pageSize: request.config.coreProtectTiles.detailPageSize }, controller!.signal); if (!isCurrent(request)) return []; all.push(...page.events); cursor = page.nextCursor; } while (cursor); return dedupeEvents(all); }
-async function loadDetailTile(request: AppliedRequest, key: string) { const [tx, tz] = key.split(':').map(Number), b = tileBounds({ x: tx, z: tz }, request.config.coreProtectTiles.tileSize); const events: CpEvent[] = []; let cursor: string | null = null; do { const page = await apiQueryPage(request.filters, { snapshot: request.snapshot, cursor, pageSize: request.config.coreProtectTiles.detailPageSize, tile: { xMin: b.x1, xMaxExclusive: b.x2, zMin: b.z1, zMaxExclusive: b.z2 } }, controller!.signal); if (!isCurrent(request)) return false; events.push(...page.events); cursor = page.nextCursor; } while (cursor); return isCurrent(request) && map.installEventTile(request.generation, key, dedupeEvents(events), colorContext(request.filters)); }
+function abortError(error: unknown) {
+  return error instanceof DOMException && error.name === 'AbortError';
+}
+
+// Load every paginated event result for a query that fits the detail limit.
+async function fetchAll(request: AppliedRequest) {
+  const all: CpEvent[] = [];
+  let cursor: string | null = null;
+  do {
+    const page = await apiQueryPage(
+      request.filters,
+      { snapshot: request.snapshot, cursor, pageSize: request.config.coreProtectTiles.detailPageSize },
+      controller!.signal,
+    );
+    if (!isCurrent(request)) return [];
+    all.push(...page.events);
+    cursor = page.nextCursor;
+  } while (cursor);
+  return dedupeEvents(all);
+}
+
+// Load and install the exact events for one aggregate tile.
+async function loadDetailTile(request: AppliedRequest, key: string) {
+  const [tx, tz] = key.split(':').map(Number);
+  const b = tileBounds({ x: tx, z: tz }, request.config.coreProtectTiles.tileSize);
+  const events: CpEvent[] = [];
+  let cursor: string | null = null;
+  do {
+    const page = await apiQueryPage(
+      request.filters,
+      {
+        snapshot: request.snapshot,
+        cursor,
+        pageSize: request.config.coreProtectTiles.detailPageSize,
+        tile: { xMin: b.x1, xMaxExclusive: b.x2, zMin: b.z1, zMaxExclusive: b.z2 },
+      },
+      controller!.signal,
+    );
+    if (!isCurrent(request)) return false;
+    events.push(...page.events);
+    cursor = page.nextCursor;
+  } while (cursor);
+
+  return isCurrent(request)
+    && map.installEventTile(request.generation, key, dedupeEvents(events), colorContext(request.filters));
+}
 function detailProgress(request: AppliedRequest) {
   return `${detailSession?.loadedCount ?? 0}/${request.aggregateTileTotal ?? 0} плиток · ${aggregateTotal(request)} подій`;
 }
@@ -78,56 +265,229 @@ function startMassDetails() {
   const session = detailSession, request = appliedRequest;
   if (!session || !request || !isCurrent(request) || detailRun) return;
   if (!session.startMass()) return;
+
   const total = request.aggregateTileTotal ?? session.queue.size;
   let partial = 0;
   setLoading(true);
   showStatus('Завантажується деталізація…');
+
   let run: Promise<void>;
   run = (async () => {
-    const worker = async () => { while (isCurrent(request) && !session.isStopped) { const key = session.takeMass(); if (!key) return; let installed = false; try { installed = await loadDetailTile(request, key); } catch (error) { if (!abortError(error)) partial++; } finally { session.queue.complete(key, installed); if (isCurrent(request) && !session.isStopped) showStatus(`${partial ? 'Часткові помилки · ' : ''}деталізація: ${detailProgress(request)}`); } } };
+    // Parallel workers drain the queue until it is empty, stopped, or obsolete.
+    const worker = async () => {
+      while (isCurrent(request) && !session.isStopped) {
+        const key = session.takeMass();
+        if (!key) return;
+
+        let installed = false;
+        try {
+          installed = await loadDetailTile(request, key);
+        } catch (error) {
+          if (!abortError(error)) partial++;
+        } finally {
+          session.queue.complete(key, installed);
+          if (isCurrent(request) && !session.isStopped) {
+            showStatus(`${partial ? 'Часткові помилки · ' : ''}деталізація: ${detailProgress(request)}`);
+          }
+        }
+      }
+    };
+
     await Promise.all(Array.from({ length: Math.min(session.workerCap, total) }, worker));
-    if (isCurrent(request) && !session.isStopped) showStatus(`${partial ? 'Часткові помилки; ' : ''}деталізацію завершено: ${detailProgress(request)}`, partial > 0);
-  })().finally(() => { if (detailRun === run) detailRun = null; if (isCurrent(request)) { setLoading(false); rebuild(); } });
+    if (isCurrent(request) && !session.isStopped) {
+      showStatus(`${partial ? 'Часткові помилки; ' : ''}деталізацію завершено: ${detailProgress(request)}`, partial > 0);
+    }
+  })().finally(() => {
+    if (detailRun === run) detailRun = null;
+    if (isCurrent(request)) {
+      setLoading(false);
+      rebuild();
+    }
+  });
   detailRun = run;
 }
+
 function startSingleDetail(key: string) {
   const session = detailSession, request = appliedRequest;
   if (!session || !request || !isCurrent(request)) return;
   const action = session.startSingle(key);
-  if (action === 'prioritized') { showStatus('Одну ділянку деталізації додано до черги з пріоритетом'); return; }
+  if (action === 'prioritized') {
+    showStatus('Одну ділянку деталізації додано до черги з пріоритетом');
+    return;
+  }
   if (action !== 'started') return;
   setLoading(true);
   showStatus('Завантажується деталізація однієї ділянки…');
+
   let run: Promise<void>;
   run = (async () => {
     let installed = false;
-    try { installed = await loadDetailTile(request, key); }
-    catch (error) { if (!abortError(error) && isCurrent(request)) showStatus(`Помилка деталізації однієї ділянки: ${String(error)}`, true); }
-    finally {
+    try {
+      installed = await loadDetailTile(request, key);
+    } catch (error) {
+      if (!abortError(error) && isCurrent(request)) {
+        showStatus(`Помилка деталізації однієї ділянки: ${String(error)}`, true);
+      }
+    } finally {
       session.queue.complete(key, installed);
-      if (isCurrent(request) && !session.isStopped && installed) showStatus(`Деталізацію однієї ділянки завантажено: ${detailProgress(request)}`);
+      if (isCurrent(request) && !session.isStopped && installed) {
+        showStatus(`Деталізацію однієї ділянки завантажено: ${detailProgress(request)}`);
+      }
     }
   })().finally(() => {
     detailSingleRuns.delete(run);
-    if (isCurrent(request) && !detailRun && detailSingleRuns.size === 0) { setLoading(false); rebuild(); }
+    if (isCurrent(request) && !detailRun && detailSingleRuns.size === 0) {
+      setLoading(false);
+      rebuild();
+    }
   });
   detailSingleRuns.add(run);
 }
-function aggregateTotal(request: AppliedRequest) { return request.aggregateTotal ?? 0; }
+function aggregateTotal(request: AppliedRequest) {
+  return request.aggregateTotal ?? 0;
+}
+function uniqueEventUsers(events: CpEvent[]) {
+  // UUID є стабільним ключем; для старих записів без UUID використовується нік.
+  const users = new Map<string, { nick: string | null; uuid: string | null }>();
+  for (const event of events) {
+    const key = event.uuid ? `uuid:${event.uuid}` : `nick:${event.nick ?? ''}`;
+    if (!users.has(key)) users.set(key, { nick: event.nick, uuid: event.uuid });
+  }
+  return [...users.values()].sort((left, right) => (left.nick ?? '').localeCompare(right.nick ?? '', 'uk'));
+}
 async function apply() {
-  const effective = calculateEffectiveTime(draftTime, Math.floor(Date.now() / 1000)); if (effective.error) { rangeError = effective.error; rebuild(); return; }
-  rangeError = null; detailSession?.stop(); detailSession = null; detailRun = null; detailSingleRuns.clear(); controller?.abort(); controller = new AbortController(); const signal = controller.signal; const filters = cloneFilters(draftFilters); filters.tFrom = effective.from; filters.tTo = effective.to; const localGeneration = scan.start(); generation = localGeneration; setLoading(true); stopped = false; dirty = scan.dirty; showStatus('Оновлення метаданих…');
+  const effective = calculateEffectiveTime(draftTime, Math.floor(Date.now() / 1000));
+  if (effective.error) {
+    rangeError = effective.error;
+    rebuild();
+    return;
+  }
+
+  // Cancel the old request before creating a fresh data generation.
+  rangeError = null;
+  detailSession?.stop();
+  detailSession = null;
+  detailRun = null;
+  detailSingleRuns.clear();
+  controller?.abort();
+  controller = new AbortController();
+  const signal = controller.signal;
+  const filters = cloneFilters(draftFilters);
+  filters.tFrom = effective.from;
+  filters.tTo = effective.to;
+  const localGeneration = scan.start();
+  generation = localGeneration;
+  setLoading(true);
+  stopped = false;
+  dirty = scan.dirty;
+  showStatus('Оновлення метаданих…');
+
   try {
-    meta = await apiRefreshMeta(signal); if (signal.aborted || localGeneration !== generation) return; showStatus('Перевірка обсягу даних…'); const plan = await apiQueryPlan(filters, undefined, signal); if (signal.aborted || localGeneration !== generation) return; const request: AppliedRequest = { filters, center: { x: map.cam.cx, z: map.cam.cz, scale: map.cam.scale }, config, snapshot: plan.snapshot, generation: localGeneration }; appliedRequest = request;
-    if (plan.strategy === 'all') { const events = await fetchAll(request); if (!isCurrent(request)) return; const groups = distributeEventsByTile(events, config.coreProtectTiles.tileSize); map.beginDataGeneration(localGeneration); for (const [key, tileEvents] of groups) map.setEventTile(localGeneration, key, tileEvents, colorContext(request.filters)); if (!isCurrent(request) || !map.commitDataGeneration(localGeneration)) return; resultBounds = plan.bounds ?? (events.length ? { x1: Math.min(...events.map(e => e.x)), x2: Math.max(...events.map(e => e.x)), z1: Math.min(...events.map(e => e.z)), z2: Math.max(...events.map(e => e.z)) } : null); showStatus(`${plan.totalExact ? events.length : `>${plan.threshold}`} подій завантажено`); return; }
-    showStatus('Побудова огляду…'); const aggregate = await apiAggregate(filters, request.snapshot, config.coreProtectTiles.tileSize, signal); if (!isCurrent(request)) return; const grouped = new Map<string, typeof aggregate.chunks>(); for (const chunk of aggregate.chunks) { const key = tileKey({ x: Math.floor(chunk.cx * 16 / config.coreProtectTiles.tileSize), z: Math.floor(chunk.cz * 16 / config.coreProtectTiles.tileSize) }); const group = grouped.get(key); if (group) group.push(chunk); else grouped.set(key, [chunk]); } map.beginDataGeneration(localGeneration); for (const [key, chunks] of grouped) map.setAggregateTile(localGeneration, key, chunks, colorContext(request.filters)); if (!map.commitDataGeneration(localGeneration)) return;
-    resultBounds = aggregate.bbox; const occupied = aggregate.occupiedTiles.map(tile => ({ x: tile.tx, z: tile.tz })); const queue = new DetailTileQueue(sortOccupiedTiles(occupied, { x: Math.floor(request.center.x / config.coreProtectTiles.tileSize), z: Math.floor(request.center.z / config.coreProtectTiles.tileSize) }).map(tileKey)); request.aggregateTotal = aggregate.total; request.aggregateTileTotal = queue.size; detailSession = new DetailQueueSession(queue, config.coreProtectTiles.maxConcurrentRequests); detailPriority = startSingleDetail;
+    meta = await apiRefreshMeta(signal);
+    if (signal.aborted || localGeneration !== generation) return;
+
+    showStatus('Перевірка обсягу даних…');
+    const plan = await apiQueryPlan(filters, undefined, signal);
+    if (signal.aborted || localGeneration !== generation) return;
+
+    const request: AppliedRequest = {
+      filters,
+      center: { x: map.cam.cx, z: map.cam.cz, scale: map.cam.scale },
+      config,
+      snapshot: plan.snapshot,
+      generation: localGeneration,
+    };
+    appliedRequest = request;
+
+    // Small queries are loaded as complete event tiles immediately.
+    if (plan.strategy === 'all') {
+      const events = await fetchAll(request);
+      if (!isCurrent(request)) return;
+
+      const groups = distributeEventsByTile(events, config.coreProtectTiles.tileSize);
+      map.beginDataGeneration(localGeneration);
+      for (const [key, tileEvents] of groups) {
+        map.setEventTile(localGeneration, key, tileEvents, colorContext(request.filters));
+      }
+      if (!isCurrent(request) || !map.commitDataGeneration(localGeneration)) return;
+
+      resultUsers = uniqueEventUsers(events);
+      resultBounds = plan.bounds ?? (events.length
+        ? {
+            x1: Math.min(...events.map(event => event.x)),
+            x2: Math.max(...events.map(event => event.x)),
+            z1: Math.min(...events.map(event => event.z)),
+            z2: Math.max(...events.map(event => event.z)),
+          }
+        : null);
+      showStatus(`${plan.totalExact ? events.length : `>${plan.threshold}`} подій завантажено`);
+      return;
+    }
+
+    // Large queries first display the aggregate layer and prepare detail tiles.
+    showStatus('Побудова огляду…');
+    const aggregate = await apiAggregate(
+      filters,
+      request.snapshot,
+      config.coreProtectTiles.tileSize,
+      signal,
+    );
+    if (!isCurrent(request)) return;
+
+    const grouped = new Map<string, typeof aggregate.chunks>();
+    for (const chunk of aggregate.chunks) {
+      const key = tileKey({
+        x: Math.floor(chunk.cx * 16 / config.coreProtectTiles.tileSize),
+        z: Math.floor(chunk.cz * 16 / config.coreProtectTiles.tileSize),
+      });
+      const group = grouped.get(key);
+      if (group) group.push(chunk);
+      else grouped.set(key, [chunk]);
+    }
+
+    map.beginDataGeneration(localGeneration);
+    for (const [key, chunks] of grouped) {
+      map.setAggregateTile(localGeneration, key, chunks, colorContext(request.filters));
+    }
+    if (!map.commitDataGeneration(localGeneration)) return;
+
+    resultUsers = aggregate.players;
+    resultBounds = aggregate.bbox;
+    const occupied = aggregate.occupiedTiles.map(tile => ({ x: tile.tx, z: tile.tz }));
+    const priorityCenter = {
+      x: Math.floor(request.center.x / config.coreProtectTiles.tileSize),
+      z: Math.floor(request.center.z / config.coreProtectTiles.tileSize),
+    };
+    const detailKeys = sortOccupiedTiles(occupied, priorityCenter).map(tileKey);
+    const queue = new DetailTileQueue(detailKeys);
+    request.aggregateTotal = aggregate.total;
+    request.aggregateTileTotal = queue.size;
+    detailSession = new DetailQueueSession(queue, config.coreProtectTiles.maxConcurrentRequests);
+    detailPriority = startSingleDetail;
     setLoading(false);
     showStatus(`Огляд повністю завантажено: ${aggregate.total} подій. Масова деталізація запускається лише кнопкою «Продовжити деталізацію»; масштаб змінює лише вигляд.`);
     return;
-  } catch (error) { if (!abortError(error) && !signal.aborted) showStatus(`Помилка; попередня карта збережена: ${String(error)}`, true); } finally { if (localGeneration === generation && !detailRun) { setLoading(false); rebuild(); } }
+  } catch (error) {
+    if (!abortError(error) && !signal.aborted) {
+      showStatus(`Помилка; попередня карта збережена: ${String(error)}`, true);
+    }
+  } finally {
+    if (localGeneration === generation && !detailRun) {
+      setLoading(false);
+      rebuild();
+    }
+  }
 }
-function stop() { stopped = true; detailSession?.stop(); detailPriority = null; scan.stop(generation); controller?.abort(); setLoading(false); showStatus('Зупинено: огляд і завантажені деталі збережено'); }
+
+function stop() {
+  stopped = true;
+  detailSession?.stop();
+  detailPriority = null;
+  scan.stop(generation);
+  controller?.abort();
+  setLoading(false);
+  showStatus('Зупинено: огляд і завантажені деталі збережено');
+}
 // Coordinates from Pixi are viewport-relative, while the tooltip is positioned inside #map-wrap.
 function onHover(events: CpEvent[] | null, sx: number, sy: number) {
   if (!events?.length) { tooltipEl.style.display = 'none'; return; }
@@ -136,11 +496,17 @@ function onHover(events: CpEvent[] | null, sx: number, sy: number) {
   const visibleEvents = events.slice(0, 6);
   const fragment = document.createDocumentFragment();
   for (const event of visibleEvents) {
-    const item = inspectorElement('div'); item.className = 'ev';
-    const swatch = inspectorElement('span'); swatch.className = 'swatch';
+    const item = inspectorElement('div');
+    item.className = 'ev';
+    const swatch = inspectorElement('span');
+    swatch.className = 'swatch';
     swatch.style.background = rgbHex(eventColor(event, context));
-    const nick = inspectorElement('b', event.nick ?? '?'); nick.className = 'nick';
-    const details = inspectorElement('span', ` · ${eventActionLabel(event)} · ${event.material ?? '—'} · ${localTime(event.time)}`);
+    const nick = inspectorElement('b', event.nick ?? '?');
+    nick.className = 'nick';
+    const details = inspectorElement(
+      'span',
+      ` · ${eventActionLabel(event)} · ${event.material ?? '—'} · ${localTime(event.time)}`,
+    );
     details.className = 'tiny';
     item.append(swatch, nick, details);
     fragment.append(item);
@@ -163,12 +529,25 @@ function inspectorElement<K extends keyof HTMLElementTagNameMap>(tag: K, text?: 
   if (text != null) element.textContent = text;
   return element;
 }
-function eventActionLabel(event: CpEvent) { return ACTION_LABELS[`${event.src}:${event.action}`] ?? `Дія ${event.src}:${event.action}`; }
-function localTime(epochSeconds: number) { return new Date(epochSeconds * 1000).toLocaleString('ru-RU'); }
-function closeInspector() { inspectorRequest++; inspectorEl.classList.remove('open'); inspectorEl.replaceChildren(); }
+function eventActionLabel(event: CpEvent) {
+  return ACTION_LABELS[`${event.src}:${event.action}`] ?? `Дія ${event.src}:${event.action}`;
+}
+
+function localTime(epochSeconds: number) {
+  return new Date(epochSeconds * 1000).toLocaleString('ru-RU');
+}
+
+function closeInspector() {
+  inspectorRequest++;
+  inspectorEl.classList.remove('open');
+  inspectorEl.replaceChildren();
+}
+
 function inspectorRow(label: string, value: string, small = false) {
-  const row = inspectorElement('div'); row.className = 'kv';
-  const key = inspectorElement('span', label); key.className = 'k';
+  const row = inspectorElement('div');
+  row.className = 'kv';
+  const key = inspectorElement('span', label);
+  key.className = 'k';
   const content = inspectorElement('span', value);
   if (small) content.className = 'tiny inspector-value';
   row.append(key, content);
@@ -185,20 +564,34 @@ async function copyTeleport(button: HTMLButtonElement, event: CpEvent) {
     button.title = command;
   }
 }
-function sameEvent(left: CpEvent, right: CpEvent) { return left.src === right.src && left.rowid_src === right.rowid_src; }
+function sameEvent(left: CpEvent, right: CpEvent) {
+  return left.src === right.src && left.rowid_src === right.rowid_src;
+}
 function eventListLabel(event: CpEvent) {
   return `${event.nick ?? '?'} · ${eventActionLabel(event)} · ${event.material ?? '—'} · ${localTime(event.time)}`;
 }
+
+// Render the selected event and all related events already loaded for its tile.
 function renderInspector(event: CpEvent, nearby: CpEvent[], blockEvents: CpEvent[]) {
   inspectorEl.replaceChildren();
-  const heading = inspectorElement('div'); heading.className = 'row inspector-heading';
-  const title = inspectorElement('h3', 'Подія'); title.className = 'inspector-title';
-  const close = inspectorElement('button', '✕'); close.type = 'button'; close.title = 'Закрити інспектор'; close.addEventListener('click', closeInspector);
+  const heading = inspectorElement('div');
+  heading.className = 'row inspector-heading';
+  const title = inspectorElement('h3', 'Подія');
+  title.className = 'inspector-title';
+  const close = inspectorElement('button', '✕');
+  close.type = 'button';
+  close.title = 'Закрити інспектор';
+  close.addEventListener('click', closeInspector);
   heading.append(title, close);
 
-  const card = inspectorElement('div'); card.className = 'card';
+  const card = inspectorElement('div');
+  card.className = 'card';
   const player = inspectorElement('h4', event.nick ?? '?');
-  card.append(player, inspectorRow('Дія', eventActionLabel(event)), inspectorRow('Блок', event.material ?? '—'));
+  card.append(
+    player,
+    inspectorRow('Дія', eventActionLabel(event)),
+    inspectorRow('Блок', event.material ?? '—'),
+  );
   if (event.amount != null) card.append(inspectorRow('Кількість', String(event.amount)));
   card.append(
     inspectorRow('Координати', `${event.x} / ${event.y} / ${event.z}`),
@@ -208,10 +601,15 @@ function renderInspector(event: CpEvent, nearby: CpEvent[], blockEvents: CpEvent
     inspectorRow('UUID', event.uuid ?? '—', true),
   );
 
-  const actions = inspectorElement('div'); actions.className = 'row inspector-actions';
-  const filterPlayer = inspectorElement('button', 'Фільтр: гравець'); filterPlayer.type = 'button';
-  filterPlayer.addEventListener('click', () => onFiltersChanged({ users: event.nick ? [event.nick] : [], usersExcl: false }));
-  const copy = inspectorElement('button', 'Копіювати /tp'); copy.type = 'button';
+  const actions = inspectorElement('div');
+  actions.className = 'row inspector-actions';
+  const filterPlayer = inspectorElement('button', 'Фільтр: гравець');
+  filterPlayer.type = 'button';
+  filterPlayer.addEventListener('click', () => {
+    onFiltersChanged({ users: event.nick ? [event.nick] : [], usersExcl: false });
+  });
+  const copy = inspectorElement('button', 'Копіювати /tp');
+  copy.type = 'button';
   copy.addEventListener('click', () => void copyTeleport(copy, event));
   actions.append(filterPlayer, copy);
 
@@ -232,14 +630,25 @@ function renderInspector(event: CpEvent, nearby: CpEvent[], blockEvents: CpEvent
   }
 
   const nearbyHeading = inspectorElement('h3', 'Останні дії поруч (усі гравці, ±1 год, 16 блоків)');
-  const nearbyCard = inspectorElement('div'); nearbyCard.className = 'card nearby-events';
+  const nearbyCard = inspectorElement('div');
+  nearbyCard.className = 'card nearby-events';
   if (!nearby.length) {
-    const empty = inspectorElement('span', 'немає даних'); empty.className = 'tiny'; nearbyCard.append(empty);
+    const empty = inspectorElement('span', 'немає даних');
+    empty.className = 'tiny';
+    nearbyCard.append(empty);
   } else {
     for (const nearbyEvent of nearby) {
-      const item = inspectorElement('div'); item.className = 'nearby-item';
-      const actor = inspectorElement('div', `Гравець: ${nearbyEvent.nick ?? 'невідомо'}`); actor.className = 'nearby-actor';
-      const details = inspectorElement('div', `${eventActionLabel(nearbyEvent)} · ${nearbyEvent.material ?? '—'} · ${nearbyEvent.x}, ${nearbyEvent.y}, ${nearbyEvent.z} · ${new Date(nearbyEvent.time * 1000).toLocaleTimeString('ru-RU')}`);
+      const item = inspectorElement('div');
+      item.className = 'nearby-item';
+      const actor = inspectorElement('div', `Гравець: ${nearbyEvent.nick ?? 'невідомо'}`);
+      actor.className = 'nearby-actor';
+      const nearbyDetails = [
+        eventActionLabel(nearbyEvent),
+        nearbyEvent.material ?? '—',
+        `${nearbyEvent.x}, ${nearbyEvent.y}, ${nearbyEvent.z}`,
+        new Date(nearbyEvent.time * 1000).toLocaleTimeString('ru-RU'),
+      ].join(' · ');
+      const details = inspectorElement('div', nearbyDetails);
       details.className = 'nearby-details';
       item.append(actor, details);
       nearbyCard.append(item);
@@ -248,6 +657,7 @@ function renderInspector(event: CpEvent, nearby: CpEvent[], blockEvents: CpEvent
   inspectorEl.append(heading, card, actions, blockHeading, blockCard, nearbyHeading, nearbyCard);
 }
 async function showInspectorEvent(event: CpEvent, blockEvents: CpEvent[]) {
+  // The monotonically increasing token ignores stale asynchronous responses.
   const request = ++inspectorRequest;
   inspectorEl.classList.add('open'); inspectorEl.replaceChildren();
   const loadingMessage = inspectorElement('div', 'Завантаження…'); loadingMessage.className = 'tiny';
@@ -266,9 +676,55 @@ async function showInspectorEvent(event: CpEvent, blockEvents: CpEvent[]) {
 }
 async function onClick(events: CpEvent[]) {
   if (!events.length) { closeInspector(); return; }
-  await showInspectorEvent(events.at(-1)!, events);
+  // Події впорядковані від нових до старих, тому верхня подія є першою.
+  await showInspectorEvent(events[0], events);
 }
-async function boot() { config = await apiConfig(); draftFilters = defaultFilters(config.defaultLimit); meta = await apiMeta(); if (!meta.worlds.some(world => world.world === draftFilters.world)) draftFilters.world = meta.worlds[0]?.world ?? draftFilters.world; map = new MapView($('map'), { onHover, onClick, onSelection: bbox => { draftFilters.bbox = bbox; markDirty(); }, onCameraChange: onCamera, onCursorMove, onPrioritizeTile: key => detailPriority?.(key) }, config.coreProtectTiles); await map.ready; map.setLodMarkersVisible(lodMarkersVisible); bluemap = new BluemapLayer(config.bluemap as never); map.world.addChildAt(bluemap.container, 0); bluemap.setOpacity(bluemapOpacity); bluemap.setWorld(draftFilters.world); updateHud(); rebuild(); showStatus('Натисніть «Оновити дані»'); window.addEventListener('keydown', event => { if (!event.repeat && (event.ctrlKey || event.metaKey) && event.key === 'Enter') { event.preventDefault(); void apply(); } }); }
+
+// Initialize configuration, the map renderer, UI controls, and shortcuts.
+async function boot() {
+  config = await apiConfig();
+  draftFilters = defaultFilters(config.defaultLimit);
+  meta = await apiMeta();
+
+  if (!meta.worlds.some(world => world.world === draftFilters.world)) {
+    draftFilters.world = meta.worlds[0]?.world ?? draftFilters.world;
+  }
+
+  map = new MapView(
+    $('map'),
+    {
+      onHover,
+      onClick,
+      onSelection: bbox => {
+        draftFilters.bbox = bbox;
+        markDirty();
+      },
+      onCameraChange: onCamera,
+      onCursorMove,
+      onPrioritizeTile: key => detailPriority?.(key),
+    },
+    config.coreProtectTiles,
+  );
+  await map.ready;
+  map.setLodMarkersVisible(lodMarkersVisible);
+
+  bluemap = new BluemapLayer(config.bluemap as never);
+  map.world.addChildAt(bluemap.container, 0);
+  bluemap.setOpacity(bluemapOpacity);
+  bluemap.setWorld(draftFilters.world);
+
+  updateHud();
+  rebuild();
+  showStatus('Натисніть «Оновити дані»');
+
+  window.addEventListener('keydown', event => {
+    if (!event.repeat && (event.ctrlKey || event.metaKey) && event.key === 'Enter') {
+      event.preventDefault();
+      void apply();
+    }
+  });
+}
+
 void boot();
 /* obsolete implementation removed
 import './style.css';

@@ -111,6 +111,7 @@ button.primary { background: #194a5e; border-color: var(--accent); }
   background: rgba(15,19,27,.9); border: 1px solid var(--border); border-radius: 6px;
   padding: 6px 10px; font-size: 11px; max-height: 40%; overflow-y: auto;
 }
+#legend[hidden] { display: none; }
 #legend .li { display: flex; align-items: center; gap: 6px; margin: 2px 0; }
 #legend .sw { width: 10px; height: 10px; border-radius: 2px; flex: none; }
 #world-hud {
