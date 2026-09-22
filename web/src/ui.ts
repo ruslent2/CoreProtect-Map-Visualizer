@@ -5,7 +5,21 @@ import { uuidColor, actionColor, rgbHex, ACTION_LABELS } from './colors';
 
 type ChangeFn = (patch: Partial<Filters>) => void;
 type TimeChangeFn = (time: TimeSelection, preserveEditor?: boolean) => void;
-export interface ScanControls { status: string; error?: string | null; canShowAll: boolean; canStop: boolean; canContinueDetails: boolean; bluemapOpacity: number; lodMarkersVisible: boolean; onBluemapOpacity(alpha: number): void; onLodMarkersVisible(enabled: boolean): void; onApply(): void; onStop(): void; onContinueDetails(): void; onShowAll(): void; }
+export interface ScanControls {
+  status: string;
+  error?: string | null;
+  canShowAll: boolean;
+  canStop: boolean;
+  canContinueDetails: boolean;
+  bluemapOpacity: number;
+  lodMarkersVisible: boolean;
+  onBluemapOpacity(alpha: number): void;
+  onLodMarkersVisible(enabled: boolean): void;
+  onApply(): void;
+  onStop(): void;
+  onContinueDetails(): void;
+  onShowAll(): void;
+}
 
 export interface MetaData {
   worlds: { id: number; world: string }[];

@@ -7,17 +7,42 @@
   <link rel="stylesheet" href="/src/style.css" />
 </head>
 <body>
-  <div id="app">
-    <aside id="filters"></aside>
-    <main id="map-wrap">
-      <div id="map"></div>
-      <div id="tooltip"></div>
-      <div id="statusbar"></div>
-      <div id="legend" hidden></div>
-      <div id="world-hud"></div>
-    </main>
-    <aside id="inspector"></aside>
+  <section id="auth-screen" class="auth-screen">
+    <div class="auth-card">
+      <div class="auth-mark">CP</div>
+      <h1>CoreProtect Map Visualizer</h1>
+      <p id="auth-message">Увійдіть через Discord, щоб переглядати карту.</p>
+      <a class="discord-button" href="/api/auth/discord/start">Увійти через Discord</a>
+    </div>
+  </section>
+  <div id="app" hidden>
+    <header id="page-header">
+      <div id="account-bar">
+        <span id="account-name"></span>
+        <button id="admin-button" type="button" hidden>Чорний список</button>
+        <button id="logout-button" type="button">Вийти</button>
+      </div>
+    </header>
+    <div id="workspace">
+      <aside id="filters"></aside>
+      <main id="map-wrap">
+        <div id="map"></div>
+        <div id="tooltip"></div>
+        <div id="statusbar"></div>
+        <div id="legend" hidden></div>
+        <div id="world-hud"></div>
+      </main>
+      <aside id="inspector"></aside>
+    </div>
   </div>
+  <dialog id="admin-dialog">
+    <form method="dialog" class="admin-panel">
+      <header><h2>Чорний список</h2><button value="cancel" aria-label="Закрити">×</button></header>
+      <div class="blacklist-add"><input id="blacklist-id" inputmode="numeric" placeholder="Discord ID користувача" /><button id="blacklist-add" type="button">Заблокувати</button></div>
+      <p id="blacklist-error" class="form-error"></p>
+      <div id="blacklist-users"></div>
+    </form>
+  </dialog>
   <script type="module" src="/src/main.ts"></script>
 </body>
 </html>

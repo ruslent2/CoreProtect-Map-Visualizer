@@ -52,6 +52,19 @@ export interface ApiConfig {
 	bluemap: Record<string, unknown>;
 }
 
+export interface AuthUser {
+	id: string;
+	username: string;
+	avatar: string | null;
+	role: 'admin' | 'moderator';
+}
+
+export interface BlockedUser {
+	discordId: string;
+	addedBy: string;
+	createdAt: number;
+}
+
 export interface QueryPlanResult {
 	strategy: 'all' | 'overview-and-detail';
 	threshold: number;
@@ -132,6 +145,35 @@ async function getJson<T>(
 	}
 
 	return response.json() as Promise<T>;
+}
+
+/** Повертає поточного користувача або null, якщо сесія відсутня. */
+export async function apiAuthMe(): Promise<AuthUser | null> {
+	const response = await fetch('/api/auth/me');
+	if (response.status === 401) return null;
+	if (!response.ok) throw new Error((await response.text()) || response.statusText);
+	return response.json() as Promise<AuthUser>;
+}
+
+export async function apiLogout() {
+	await fetch('/api/auth/logout', { method: 'POST' });
+}
+
+export function apiBlacklist() {
+	return getJson<{ users: BlockedUser[] }>('/api/admin/blacklist');
+}
+
+export async function apiBlockUser(discordId: string) {
+	const response = await fetch('/api/admin/blacklist', {
+		method: 'POST',
+		headers: { 'Content-Type': 'application/json' },
+		body: JSON.stringify({ discordId }),
+	});
+	if (!response.ok) throw new Error((await response.text()) || response.statusText);
+}
+
+export function apiUnblockUser(discordId: string) {
+	return getJson<{ removed: boolean }>(`/api/admin/blacklist/${encodeURIComponent(discordId)}`, undefined, 'DELETE');
 }
 
 // Добавляет фильтры к дополнительным параметрам строки запроса.

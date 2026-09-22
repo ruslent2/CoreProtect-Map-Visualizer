@@ -6,6 +6,7 @@ import { fileURLToPath } from 'node:url';
 import { Store } from './db.js';
 import { parseFilters, parseSnapshot, parseCursor, queryEvents, queryPlan, aggregateChunks, getEvent, nearbyEvents, bboxOf, bboxOfChunks, encodeCursor } from './queries.js';
 import { normalizeConfig } from './config.js';
+import { registerAuth } from './auth.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const defaultRootDir = path.resolve(__dirname, '../..');
@@ -16,18 +17,23 @@ function log(level, message, details) {
 }
 
 /** Builds the backend without opening a listener, allowing isolated endpoint tests. */
-export async function buildApp({ store, cfg, rootDir = defaultRootDir } = {}) {
+export async function buildApp({ store, cfg, rootDir = defaultRootDir, fetchImpl, authStore } = {}) {
   const normalizedCfg = normalizeConfig(cfg);
   if (!store) throw new Error('buildApp requires a store');
   cfg = normalizedCfg;
   store.cfg = cfg;
   const app = Fastify({ logger: false });
 
+  await registerAuth(app, { cfg, rootDir, fetchImpl, authStore });
+
 app.addHook('onRequest', (req, reply, done) => {
   req.cpmvStartedAt = performance.now();
-  log('log', `HTTP ${req.method} ${req.url} — початок`);
-  reply.header('Access-Control-Allow-Origin', '*');
-  reply.header('Access-Control-Allow-Headers', '*');
+  // Query OAuth callback містить одноразові секрети, тому журналюємо лише шлях.
+  log('log', `HTTP ${req.method} ${req.url.split('?')[0]} — початок`);
+  const origin = req.headers.origin;
+  if (!cfg.discordAuth?.enabled) reply.header('Access-Control-Allow-Origin', '*');
+  else if (origin === cfg.publicOrigin) reply.header('Access-Control-Allow-Origin', origin).header('Vary', 'Origin');
+  reply.header('Access-Control-Allow-Headers', 'Content-Type');
   if (req.method === 'OPTIONS') return reply.send();
   done();
 });

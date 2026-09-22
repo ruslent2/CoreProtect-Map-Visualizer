@@ -3,6 +3,17 @@
   "cachePath": "F:/Mine/CoreProtect-Map-Visualizer/data/cache.db",
   "port": 3010,
   "host": "127.0.0.1",
+  "publicOrigin": "http://localhost:3010",
+  "discordAuth": {
+    "enabled": true,
+    "databasePath": "data/auth.db",
+    "redirectUri": "http://localhost:3010/api/auth/discord/callback",
+    "guildId": "1009444625251053659",
+    "adminRoleId": "1028353851276931115",
+    "moderatorRoleIds": ["1112653838181208095", "1365630403133833286"],
+    "roleCheckIntervalMs": 900000,
+    "sessionMaxAgeMs": 2592000000
+  },
   "bluemap": {
     "enabled": true,
     "baseUrl": "http://dragonseven.top:25674",

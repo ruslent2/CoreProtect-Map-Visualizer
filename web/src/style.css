@@ -1,10 +1,31 @@
+/* Авторизація приховує карту до підтвердження Discord-ролі. */
+.auth-screen { min-height: 100vh; display: grid; place-items: center; padding: 24px; background: radial-gradient(circle at top, #28345a 0, #10131d 52%, #090b11 100%); }
+.auth-screen[hidden], #app[hidden] { display: none !important; }
+.auth-card { width: min(430px, 100%); padding: 42px; text-align: center; border: 1px solid #39415a; border-radius: 24px; background: rgba(20, 24, 36, .94); box-shadow: 0 24px 80px #0008; }
+.auth-card h1 { margin: 16px 0 8px; font-size: 25px; }
+.auth-card p { color: #aeb7ce; line-height: 1.5; }
+.auth-mark { width: 64px; height: 64px; margin: auto; display: grid; place-items: center; border-radius: 18px; background: linear-gradient(135deg, #5865f2, #8b5cf6); color: white; font-weight: 800; font-size: 22px; }
+.discord-button { display: inline-block; margin-top: 18px; padding: 12px 20px; border-radius: 10px; background: #5865f2; color: white; text-decoration: none; font-weight: 700; }
+#page-header { min-height: 48px; display: flex; align-items: center; justify-content: flex-end; padding: 0 12px; border-bottom: 1px solid #30374b; background: #151925; }
+#account-bar { display: flex; align-items: center; gap: 8px; padding: 6px 0 6px 12px; }
+#account-bar button, .admin-panel button { cursor: pointer; }
+#admin-dialog { padding: 0; width: min(560px, calc(100vw - 32px)); color: #edf1ff; border: 1px solid #424b66; border-radius: 16px; background: #171b28; }
+#admin-dialog::backdrop { background: #05070bb8; backdrop-filter: blur(4px); }
+.admin-panel { padding: 22px; }
+.admin-panel header, .blacklist-add, .blacklist-row { display: flex; align-items: center; gap: 10px; }
+.admin-panel header { justify-content: space-between; }
+.admin-panel header h2 { margin: 0; }
+.blacklist-add input { flex: 1; min-width: 0; padding: 10px; }
+.blacklist-row { justify-content: space-between; padding: 10px 0; border-bottom: 1px solid #30374b; }
+.form-error { min-height: 1.2em; color: #ff8a80; }
 :root {
   --bg: #0b0e14; --panel: #141922; --panel2: #1b212d; --border: #2a3242;
   --text: #d7dee9; --muted: #8a94a6; --accent: #4fc3f7;
 }
 * { box-sizing: border-box; }
 html, body, #app { height: 100%; margin: 0; font: 13px/1.45 "Segoe UI", system-ui, sans-serif; color: var(--text); background: var(--bg); }
-#app { display: flex; overflow: hidden; }
+#app { display: flex; flex-direction: column; overflow: hidden; }
+#workspace { min-height: 0; flex: 1; display: flex; overflow: hidden; }
 
 #filters {
   width: 300px; min-width: 300px; background: var(--panel); border-right: 1px solid var(--border);

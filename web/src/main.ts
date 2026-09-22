@@ -4,7 +4,7 @@ import { calculateEffectiveTime, defaultFilters } from './state';
 import { MapView } from './map';
 import { BluemapLayer } from './tiles';
 import { buildFilterPanel, buildLegend, type ScanControls } from './ui';
-import { apiAggregate, apiConfig, apiEvent, apiMeta, apiQueryPage, apiQueryPlan, apiRefreshMeta, type ApiConfig, type CpEvent, type MetaData, type SourceSnapshot } from './api';
+import { apiAggregate, apiAuthMe, apiBlacklist, apiBlockUser, apiConfig, apiEvent, apiLogout, apiMeta, apiQueryPage, apiQueryPlan, apiRefreshMeta, apiUnblockUser, type ApiConfig, type AuthUser, type CpEvent, type MetaData, type SourceSnapshot } from './api';
 import { ACTION_LABELS, eventColor, rgbHex } from './colors';
 import { dedupeEvents, distributeEventsByTile, sortOccupiedTiles, tileBounds, tileKey } from './tile-utils';
 import { DetailQueueSession, DetailTileQueue, ManualScanOrchestrator } from './scan-pipeline';
@@ -680,8 +680,8 @@ async function onClick(events: CpEvent[]) {
   await showInspectorEvent(events[0], events);
 }
 
-// Initialize configuration, the map renderer, UI controls, and shortcuts.
-async function boot() {
+// Ініціалізує карту лише після успішної Discord-авторизації.
+async function bootMap() {
   config = await apiConfig();
   draftFilters = defaultFilters(config.defaultLimit);
   meta = await apiMeta();
@@ -725,7 +725,55 @@ async function boot() {
   });
 }
 
-void boot();
+async function renderBlacklist() {
+  const container = $('blacklist-users');
+  const result = await apiBlacklist();
+  container.replaceChildren(...result.users.map(user => {
+    const row = document.createElement('div');
+    row.className = 'blacklist-row';
+    const label = document.createElement('span');
+    label.textContent = user.discordId;
+    const remove = document.createElement('button');
+    remove.type = 'button';
+    remove.textContent = 'Розблокувати';
+    remove.addEventListener('click', async () => { await apiUnblockUser(user.discordId); await renderBlacklist(); });
+    row.append(label, remove);
+    return row;
+  }));
+  if (!result.users.length) container.textContent = 'Чорний список порожній.';
+}
+
+/** Налаштовує профіль та адміністративні дії. */
+function setupAccount(user: AuthUser) {
+  $('account-name').textContent = `${user.username} · ${user.role === 'admin' ? 'Адміністратор' : 'Модератор'}`;
+  $('logout-button').addEventListener('click', async () => { await apiLogout(); location.reload(); });
+  if (user.role !== 'admin') return;
+  const adminButton = $('admin-button') as HTMLButtonElement;
+  const dialog = $('admin-dialog') as HTMLDialogElement;
+  adminButton.hidden = false;
+  adminButton.addEventListener('click', async () => { dialog.showModal(); await renderBlacklist(); });
+  $('blacklist-add').addEventListener('click', async () => {
+    const input = $('blacklist-id') as HTMLInputElement;
+    const error = $('blacklist-error');
+    try { await apiBlockUser(input.value.trim()); input.value = ''; error.textContent = ''; await renderBlacklist(); }
+    catch (cause) { error.textContent = `Не вдалося заблокувати: ${String(cause)}`; }
+  });
+}
+
+/** Перевіряє сесію перед завантаженням захищених даних. */
+async function boot() {
+  const user = await apiAuthMe();
+  if (!user) {
+    if (new URLSearchParams(location.search).get('auth') === 'denied') $('auth-message').textContent = 'Немає необхідної ролі або доступ заблоковано.';
+    return;
+  }
+  $('auth-screen').hidden = true;
+  $('app').hidden = false;
+  setupAccount(user);
+  await bootMap();
+}
+
+void boot().catch(error => { $('auth-message').textContent = `Помилка авторизації: ${String(error)}`; });
 /* obsolete implementation removed
 import './style.css';
 import type { Filters } from './state';
