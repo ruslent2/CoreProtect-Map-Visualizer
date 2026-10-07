@@ -17,7 +17,7 @@ function log(level, message, details) {
 }
 
 /** Builds the backend without opening a listener, allowing isolated endpoint tests. */
-export async function buildApp({ store, cfg, rootDir = defaultRootDir, fetchImpl, authStore } = {}) {
+export async function buildApp({ store, cfg, rootDir = defaultRootDir, fetchImpl = globalThis.fetch, authStore } = {}) {
   const normalizedCfg = normalizeConfig(cfg);
   if (!store) throw new Error('buildApp requires a store');
   cfg = normalizedCfg;
@@ -40,7 +40,7 @@ app.addHook('onRequest', (req, reply, done) => {
 
 app.addHook('onResponse', (req, reply, done) => {
   const elapsedMs = Math.round(performance.now() - (req.cpmvStartedAt ?? performance.now()));
-  log('log', `HTTP ${req.method} ${req.url} — відповідь ${reply.statusCode} за ${elapsedMs} мс`);
+  log('log', `HTTP ${req.method} ${req.url.split('?')[0]} — відповідь ${reply.statusCode} за ${elapsedMs} мс`);
   done();
 });
 
@@ -49,13 +49,11 @@ app.setErrorHandler((error, req, reply) => {
     message: error.message,
     stack: error.stack,
   });
-  reply.code(error.statusCode >= 400 && error.statusCode < 600 ? error.statusCode : 500).send({
-    error: 'internal server error',
-    detail: error.message,
-  });
+  const statusCode = error.statusCode >= 400 && error.statusCode < 500 ? error.statusCode : 500;
+  reply.code(statusCode).send({ error: statusCode === 500 ? 'internal server error' : error.message });
 });
 
-app.get('/api/meta', async () => {
+app.get('/api/meta', async (_req, reply) => {
   try {
     const meta = store.getMeta();
     log('log', 'Метадані бази підготовлено.', {
@@ -66,7 +64,7 @@ app.get('/api/meta', async () => {
     return meta;
   } catch (error) {
     log('error', 'Не вдалося отримати метадані бази.', { message: error.message, stack: error.stack });
-    return { error: 'db not ready', detail: String(error) };
+    return reply.code(503).send({ error: 'db not ready' });
   }
 });
 
@@ -87,7 +85,7 @@ app.get('/api/bluemap/:world/:zoom/:tx/:tz.png', async (req, reply) => {
   const tx = encodeURIComponent(req.params.tx);
   const tz = encodeURIComponent(req.params.tz);
   const url = `${bluemap.baseUrl.replace(/\/$/, '')}/maps/${world}/tiles/${zoom}/x${tx}/z${tz}.png`;
-  const response = await fetch(url);
+  const response = await fetchImpl(url);
   if (!response.ok) return reply.code(response.status).send({ error: `Bluemap tile ${response.status}` });
   reply.header('Content-Type', response.headers.get('content-type') || 'image/png');
   reply.header('Cache-Control', 'public, max-age=300');
@@ -193,7 +191,7 @@ if (isDirectEntryPoint) {
     try {
       const cfg = normalizeConfig(JSON.parse(fs.readFileSync(cfgPath, 'utf8')));
       const store = new Store(cfg, defaultRootDir);
-      try { store.open(); } catch (error) { log('error', 'Помилка відкриття бази даних.', { message: error.message, stack: error.stack }); }
+      store.open();
       buildApp({ store, cfg }).then(app => app.listen({ port: cfg.port, host: cfg.host })).then(() => {
         log('log', `Сервер CPMV запущено: http://${cfg.host}:${cfg.port}`);
       }).catch(error => {

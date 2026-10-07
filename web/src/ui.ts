@@ -299,7 +299,15 @@ function makeMultiPicker(items: PickItem[], selected: string[], onSel: (v: strin
     for (const it of flt) {
       const d = document.createElement('div');
       d.className = 'item' + (selected.includes(it.key) ? ' sel' : '');
-      d.innerHTML = `${it.color ? `<span class="dot" style="background:${it.color}"></span>` : ''}<span>${it.label}</span>`;
+      if (it.color) {
+        const dot = document.createElement('span');
+        dot.className = 'dot';
+        dot.style.background = it.color;
+        d.append(dot);
+      }
+      const label = document.createElement('span');
+      label.textContent = it.label;
+      d.append(label);
       d.onclick = () => {
         const v = selected.includes(it.key) ? selected.filter(s => s !== it.key) : [...selected, it.key];
         selected = v;
@@ -363,8 +371,13 @@ function renderChips(root: HTMLElement, f: Filters, onChange: ChangeFn) {
     for (const v of f[listKey]) {
       const c = document.createElement('span');
       c.className = 'chip';
-      c.innerHTML = `<span>${v}</span><span class="x">✕</span>`;
-      c.querySelector('.x')!.addEventListener('click', () => onChange({ [listKey]: f[listKey].filter(x => x !== v) } as Partial<Filters>));
+      const value = document.createElement('span');
+      value.textContent = v;
+      const close = document.createElement('span');
+      close.className = 'x';
+      close.textContent = '✕';
+      close.addEventListener('click', () => onChange({ [listKey]: f[listKey].filter(x => x !== v) } as Partial<Filters>));
+      c.append(value, close);
       chips.append(c);
     }
   };
@@ -385,9 +398,17 @@ export function buildLegend(root: HTMLElement, f: Filters, users: LegendUser[] |
   // Легенда з'являється лише для фактично відображеного результату пошуку.
   root.hidden = users === null;
   if (users === null) { root.replaceChildren(); return; }
-  root.innerHTML = `<div class="tiny" style="margin-bottom:4px">Основний колір: ${MODE_LABELS[f.mode]}</div>`;
+  const note = (text: string, marginBottom = false) => {
+    const element = document.createElement('div');
+    element.className = 'tiny';
+    if (marginBottom) element.style.marginBottom = '4px';
+    element.textContent = text;
+    root.append(element);
+  };
+  root.replaceChildren();
+  note(`Основний колір: ${MODE_LABELS[f.mode]}`, true);
   if (f.mode === 'user') {
-    if (!users.length) root.innerHTML += `<div class="tiny">Гравців у результатах немає</div>`;
+    if (!users.length) note('Гравців у результатах немає');
     for (const u of users) {
       const d = document.createElement('div');
       d.className = 'li';
@@ -404,12 +425,19 @@ export function buildLegend(root: HTMLElement, f: Filters, users: LegendUser[] |
       const [src, a] = k.split(':');
       const d = document.createElement('div');
       d.className = 'li';
-      d.innerHTML = `<span class="sw" style="background:${rgbHex(actionColor(src, +a))}"></span><span>${label}</span>`;
+      const swatch = document.createElement('span');
+      swatch.className = 'sw';
+      swatch.style.background = rgbHex(actionColor(src, +a));
+      const text = document.createElement('span');
+      text.textContent = label;
+      d.append(swatch, text);
       root.append(d);
     }
   } else if (f.mode === 'material') {
-    root.innerHTML = `<div class="tiny">колір = хеш матеріалу; яскравість = свіжість</div>`;
+    root.replaceChildren();
+    note('колір = хеш матеріалу; яскравість = свіжість');
   } else {
-    root.innerHTML = `<div class="tiny">нові — теплі, старі — холодні; домішування = дія</div>`;
+    root.replaceChildren();
+    note('нові — теплі, старі — холодні; домішування = дія');
   }
 }

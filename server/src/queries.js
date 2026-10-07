@@ -3,6 +3,8 @@ import { stripMaterialNamePrefix } from './config.js';
 
 const MAX = 200000;
 const DEFAULT_LIMIT = 50000;
+const MAX_PATTERNS = 100;
+const MAX_PATTERN_LENGTH = 256;
 const SOURCES = ['block', 'container', 'item'];
 const RANK = { block: 0, container: 1, item: 2 };
 
@@ -35,11 +37,30 @@ function asInteger(value, name) {
   }
 
   const number = Number(value);
-  if (!Number.isFinite(number) || !Number.isInteger(number)) {
-    throw bad(`${name} must be a finite integer`);
+  if (!Number.isSafeInteger(number)) {
+    throw bad(`${name} must be a safe integer`);
   }
 
   return number;
+}
+
+// Розбирає булеві query-параметри без неоднозначних truthy-рядків.
+function asBoolean(value, name) {
+  if (Array.isArray(value)) throw bad(`${name} must be a single boolean`);
+  if (value === true || value === 'true' || value === '1') return true;
+  if (value === false || value === 'false' || value === '0') return false;
+  throw bad(`${name} must be a boolean`);
+}
+
+// Нормалізує та обмежує списки, що надходять із query string.
+function asList(value, name) {
+  const values = (Array.isArray(value) ? value : [value])
+    .flatMap(item => String(item).split(/[\n,]/))
+    .map(item => item.trim())
+    .filter(Boolean);
+  if (values.length > MAX_PATTERNS) throw bad(`${name} has too many values`);
+  if (values.some(item => item.length > MAX_PATTERN_LENGTH)) throw bad(`${name} value is too long`);
+  return values;
 }
 
 // Нормалізує та перевіряє параметри фільтра запиту.
@@ -48,11 +69,16 @@ export function parseFilters(query) {
 
   for (const key of ['users', 'materials', 'actions']) {
     if (q[key] != null && q[key] !== '') {
-      q[key] = (Array.isArray(q[key]) ? q[key] : [q[key]])
-        .flatMap(v => String(v).split(/[\n,]/))
-        .map(v => v.trim())
-        .filter(Boolean);
+      q[key] = asList(q[key], key);
     }
+  }
+
+  for (const key of ['actionsExcl', 'materialsExcl']) {
+    if (q[key] != null && q[key] !== '') q[key] = asBoolean(q[key], key);
+  }
+
+  if (q.actions?.some(action => !Object.hasOwn(ACTIONS, action))) {
+    throw bad('actions contains an unknown action');
   }
 
   for (const key of [
@@ -72,6 +98,11 @@ export function parseFilters(query) {
   }
   if (q.tFrom != null && q.tTo != null && q.tFrom > q.tTo) {
     throw bad('tFrom must not be greater than tTo');
+  }
+
+  const bounds = ['x1', 'x2', 'z1', 'z2'];
+  if (bounds.some(key => q[key] != null) && !bounds.every(key => q[key] != null)) {
+    throw bad('bounds require x1, x2, z1, and z2');
   }
 
   const tileBounds = ['xMin', 'xMaxExclusive', 'zMin', 'zMaxExclusive'];
