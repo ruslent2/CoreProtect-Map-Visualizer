@@ -246,7 +246,7 @@ export function buildFilterPanel(
   // Сервер передає точну пару джерело/код, тому колір відповідає вибраній дії.
   const actionItems = meta.actions.map(a => ({
     key: a.id,
-    label: a.label,
+    label: actionLabel(a.src, a.action),
     color: rgbHex(actionColor(a.src, a.action)),
   }));
   const actSel = makeCheckboxPicker(actionItems, f.actions, v => onChange({ actions: v }));
