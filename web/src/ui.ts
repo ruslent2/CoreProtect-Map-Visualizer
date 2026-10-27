@@ -1,7 +1,8 @@
+import { t } from './i18n';
 import type { Filters, TimeSelection } from './state';
 import { epochSecondsToLocalDateTime, localDateTimeToEpochSeconds, presetTimeSelection } from './state';
 import type { ColorMode } from './colors';
-import { uuidColor, actionColor, rgbHex, ACTION_LABELS } from './colors';
+import { uuidColor, actionColor, rgbHex, ACTION_CODES, actionLabel } from './colors';
 
 type ChangeFn = (patch: Partial<Filters>) => void;
 type TimeChangeFn = (time: TimeSelection, preserveEditor?: boolean) => void;
@@ -28,12 +29,8 @@ export interface MetaData {
   actions: { id: string; label: string; src: string; action: number }[];
 }
 
-const MODE_LABELS: Record<ColorMode, string> = {
-  user: 'Гравці (UUID→колір)',
-  action: 'Дії',
-  material: 'Матеріали',
-  time: 'Час',
-};
+const MODE_KEYS: ColorMode[] = ['user', 'action', 'material', 'time'];
+const modeLabel = (mode: ColorMode) => t(`modes.${mode}`);
 
 function globSuggestionMatches(name: string, pattern: string, caseSensitive: boolean) {
   // Без glob-символів пропонуємо імена за префіксом. За наявності * або ?
@@ -63,25 +60,25 @@ export function buildFilterPanel(
 ) {
   root.innerHTML = '';
   const el = (html: string) => {
-    const t = document.createElement('template');
-    t.innerHTML = html.trim();
-    return t.content.firstElementChild as HTMLElement;
+    const tpl = document.createElement('template');
+    tpl.innerHTML = html.trim();
+    return tpl.content.firstElementChild as HTMLElement;
   };
 
   // --- Світ і режим ---
-  root.append(el(`<h3>Світ</h3>`));
+  root.append(el(`<h3>${t('filters.world')}</h3>`));
   const worldSel = el(`<select>${meta.worlds.map(w =>
     `<option value="${w.world}" ${w.world === f.world ? 'selected' : ''}>${w.world}</option>`).join('')}</select>`) as HTMLSelectElement;
   worldSel.onchange = () => onChange({ world: worldSel.value });
   root.append(worldSel);
 
-  root.append(el(`<h3>Режим забарвлення (основний колір)</h3>`));
-  const modeSel = el(`<select>${(Object.keys(MODE_LABELS) as ColorMode[]).map(m =>
-    `<option value="${m}" ${m === f.mode ? 'selected' : ''}>${MODE_LABELS[m]}</option>`).join('')}</select>`) as HTMLSelectElement;
+  root.append(el(`<h3>${t('filters.colorMode')}</h3>`));
+  const modeSel = el(`<select>${MODE_KEYS.map(m =>
+    `<option value="${m}" ${m === f.mode ? 'selected' : ''}>${modeLabel(m)}</option>`).join('')}</select>`) as HTMLSelectElement;
   modeSel.onchange = () => onChange({ mode: modeSel.value as ColorMode });
   root.append(modeSel);
 
-  const mixRow = el(`<div class="row"><span class="tiny">Домішування вторинного</span><input id="mix" type="range" min="0" max="50" value="${Math.round(f.mix * 100)}"><span class="tiny" id="mixv">${Math.round(f.mix * 100)}%</span></div>`);
+  const mixRow = el(`<div class="row"><span class="tiny">${t('filters.mix')}</span><input id="mix" type="range" min="0" max="50" value="${Math.round(f.mix * 100)}"><span class="tiny" id="mixv">${Math.round(f.mix * 100)}%</span></div>`);
   mixRow.querySelector<HTMLInputElement>('#mix')!.oninput = e => {
     const v = +(e.target as HTMLInputElement).value;
     mixRow.querySelector('#mixv')!.textContent = v + '%';
@@ -90,29 +87,29 @@ export function buildFilterPanel(
   root.append(mixRow);
 
   // Локальне налаштування підкладки: не змінює фільтр і не запускає запити.
-  root.append(el(`<h3>Підкладка BlueMap</h3>`));
-  const opacityRow = el(`<div class="row opacity-control"><span class="tiny">Прозорість</span><input id="bluemap-opacity" type="range" min="0" max="100" value="${Math.round(controls.bluemapOpacity * 100)}"><span class="tiny" id="bluemap-opacity-value">${Math.round(controls.bluemapOpacity * 100)}%</span></div>`);
+  root.append(el(`<h3>${t('filters.bluemap')}</h3>`));
+  const opacityRow = el(`<div class="row opacity-control"><span class="tiny">${t('filters.opacity')}</span><input id="bluemap-opacity" type="range" min="0" max="100" value="${Math.round(controls.bluemapOpacity * 100)}"><span class="tiny" id="bluemap-opacity-value">${Math.round(controls.bluemapOpacity * 100)}%</span></div>`);
   opacityRow.querySelector<HTMLInputElement>('#bluemap-opacity')!.oninput = event => {
     const value = Number((event.target as HTMLInputElement).value) / 100;
     opacityRow.querySelector('#bluemap-opacity-value')!.textContent = `${Math.round(value * 100)}%`;
     controls.onBluemapOpacity(value);
   };
   root.append(opacityRow);
-  const lodMarkersRow = el(`<label class="row lod-markers-control"><input id="lod-markers-visible" type="checkbox" ${controls.lodMarkersVisible ? 'checked' : ''}><span class="tiny">Показувати LOD-маркери</span></label>`);
+  const lodMarkersRow = el(`<label class="row lod-markers-control"><input id="lod-markers-visible" type="checkbox" ${controls.lodMarkersVisible ? 'checked' : ''}><span class="tiny">${t('filters.lodMarkers')}</span></label>`);
   lodMarkersRow.querySelector<HTMLInputElement>('#lod-markers-visible')!.onchange = event => {
     controls.onLodMarkersVisible((event.target as HTMLInputElement).checked);
   };
   root.append(lodMarkersRow);
 
   // --- Час ---
-  root.append(el(`<h3>Час</h3>`));
+  root.append(el(`<h3>${t('filters.time')}</h3>`));
   const isPreset = (hours: number) => time.mode === 'range' && time.from != null && time.to != null && time.to - time.from === hours * 3600;
   const timeRow = el(`<div class="row">
-    <button class="t-preset ${isPreset(6) ? 'active' : ''}" data-h="6">6ч</button>
-    <button class="t-preset ${isPreset(24) ? 'active' : ''}" data-h="24">24ч</button>
-    <button class="t-preset ${isPreset(168) ? 'active' : ''}" data-h="168">7д</button>
-    <button class="t-preset ${isPreset(720) ? 'active' : ''}" data-h="720">30д</button>
-    <button id="t-clear" class="excl-toggle ${time.mode === 'all' ? 'on' : ''}">Увесь час</button>
+    <button class="t-preset ${isPreset(6) ? 'active' : ''}" data-h="6">${t('filters.hours6')}</button>
+    <button class="t-preset ${isPreset(24) ? 'active' : ''}" data-h="24">${t('filters.hours24')}</button>
+    <button class="t-preset ${isPreset(168) ? 'active' : ''}" data-h="168">${t('filters.days7')}</button>
+    <button class="t-preset ${isPreset(720) ? 'active' : ''}" data-h="720">${t('filters.days30')}</button>
+    <button id="t-clear" class="excl-toggle ${time.mode === 'all' ? 'on' : ''}">${t('filters.allTime')}</button>
   </div>`);
   timeRow.querySelectorAll<HTMLButtonElement>('.t-preset').forEach(b => {
     b.onclick = () => onTimeChange(presetTimeSelection((Number(b.dataset.h) === 6 ? 'last6Hours' : Number(b.dataset.h) === 24 ? 'last24Hours' : Number(b.dataset.h) === 168 ? 'last7Days' : 'last30Days'), Math.floor(Date.now() / 1000)));
@@ -128,19 +125,19 @@ export function buildFilterPanel(
   if (controls.error) root.append(el(`<div class="time-error">${controls.error}</div>`));
 
   // --- Рівень Y ---
-  root.append(el(`<h3>Рівень Y (порожньо = усі, проєкція згори)</h3>`));
-  const yInput = el(`<input type="number" placeholder="наприклад, 64" value="${f.y ?? ''}">`) as HTMLInputElement;
+  root.append(el(`<h3>${t('filters.yLevel')}</h3>`));
+  const yInput = el(`<input type="number" placeholder="${t('filters.yPlaceholder')}" value="${f.y ?? ''}">`) as HTMLInputElement;
   yInput.onchange = () => onChange({ y: yInput.value === '' ? null : +yInput.value });
   root.append(yInput);
 
   // --- Гравці ---
-  root.append(el(`<h3>Гравці</h3>`));
+  root.append(el(`<h3>${t('filters.players')}</h3>`));
   const userPatterns = document.createElement('textarea');
   userPatterns.className = 'pattern-input';
   userPatterns.rows = 5;
-  userPatterns.placeholder = 'по одному шаблону на рядок…';
+  userPatterns.placeholder = t('filters.patternPlaceholder');
   userPatterns.value = f.users.join('\n');
-  userPatterns.title = 'Підтримуються * і ?. ! на початку виключає шаблон. (?i) робить зіставлення чутливим до регістру.';
+  userPatterns.title = t('filters.patternTitle');
   const userPatternWrap = document.createElement('div');
   userPatternWrap.className = 'pattern-autocomplete';
   const suggestions = document.createElement('div');
@@ -188,16 +185,16 @@ export function buildFilterPanel(
   userPatterns.onfocus = updateSuggestions;
   userPatterns.onblur = () => { commitUserPatterns(); window.setTimeout(hideSuggestions, 150); };
   root.append(userPatternWrap);
-  root.append(el(`<div class="tiny pattern-help">* — будь-які символи, ? — один символ, ! — виключити, (?i) — враховувати регістр</div>`));
+  root.append(el(`<div class="tiny pattern-help">${t('filters.patternHelp')}</div>`));
 
   // --- Матеріали ---
-  root.append(el(`<h3>Матеріали</h3>`));
+  root.append(el(`<h3>${t('filters.materials')}</h3>`));
   const materialPatterns = document.createElement('textarea');
   materialPatterns.className = 'pattern-input';
   materialPatterns.rows = 5;
-  materialPatterns.placeholder = 'по одному шаблону на рядок…';
+  materialPatterns.placeholder = t('filters.patternPlaceholder');
   materialPatterns.value = f.materials.join('\n');
-  materialPatterns.title = 'Підтримуються * і ?. ! на початку виключає шаблон. (?i) робить зіставлення чутливим до регістру.';
+  materialPatterns.title = t('filters.patternTitle');
   const materialPatternWrap = document.createElement('div');
   materialPatternWrap.className = 'pattern-autocomplete';
   const materialSuggestions = document.createElement('div');
@@ -240,12 +237,12 @@ export function buildFilterPanel(
     window.setTimeout(() => { materialSuggestions.hidden = true; }, 150);
   };
   root.append(materialPatternWrap);
-  root.append(el(`<div class="tiny pattern-help">* — будь-які символи, ? — один символ, ! — виключити, (?i) — враховувати регістр</div>`));
-  const matExcl = makeExclToggle('materialsExcl', f, onChange, 'Виключити вибрані');
+  root.append(el(`<div class="tiny pattern-help">${t('filters.patternHelp')}</div>`));
+  const matExcl = makeExclToggle('materialsExcl', f, onChange, t('filters.excludeSelected'));
   root.append(matExcl);
 
   // --- Дії ---
-  root.append(el(`<h3>Дії</h3>`));
+  root.append(el(`<h3>${t('filters.actions')}</h3>`));
   // Сервер передає точну пару джерело/код, тому колір відповідає вибраній дії.
   const actionItems = meta.actions.map(a => ({
     key: a.id,
@@ -253,16 +250,16 @@ export function buildFilterPanel(
     color: rgbHex(actionColor(a.src, a.action)),
   }));
   const actSel = makeCheckboxPicker(actionItems, f.actions, v => onChange({ actions: v }));
-  const actExcl = makeExclToggle('actionsExcl', f, onChange, 'Виключити вибрані');
+  const actExcl = makeExclToggle('actionsExcl', f, onChange, t('filters.excludeSelected'));
   root.append(actExcl, actSel);
 
   // --- Ділянка ---
-  root.append(el(`<h3>Ділянка</h3>`));
-  const bboxRow = el(`<div class="row"><span class="tiny" id="bbox-info">${f.bbox ? bboxText(f.bbox) : 'не задано — виділіть перетягуванням ПКМ'}</span><button id="bbox-clear">скинути</button></div>`);
+  root.append(el(`<h3>${t('filters.area')}</h3>`));
+  const bboxRow = el(`<div class="row"><span class="tiny" id="bbox-info">${f.bbox ? bboxText(f.bbox) : t('filters.areaNotSet')}</span><button id="bbox-clear">${t('filters.areaClear')}</button></div>`);
   (bboxRow.querySelector('#bbox-clear') as HTMLButtonElement).onclick = () => onChange({ bbox: null });
   root.append(bboxRow);
 
-  const scanRow = el(`<div class="scan-controls"><div class="tiny">${controls.status}</div><div class="row"><button class="primary" id="refresh">Оновити дані</button>${controls.canShowAll ? '<button id="show-all">Показати всі результати</button>' : ''}${controls.canContinueDetails ? '<button id="continue-details">Продовжити деталізацію</button>' : ''}${controls.canStop ? '<button id="stop">Зупинити</button>' : ''}</div></div>`);
+  const scanRow = el(`<div class="scan-controls"><div class="tiny">${controls.status}</div><div class="row"><button class="primary" id="refresh">${t('buttons.refresh')}</button>${controls.canShowAll ? `<button id="show-all">${t('buttons.showAll')}</button>` : ''}${controls.canContinueDetails ? `<button id="continue-details">${t('buttons.continueDetails')}</button>` : ''}${controls.canStop ? `<button id="stop">${t('buttons.stop')}</button>` : ''}</div></div>`);
   (scanRow.querySelector('#refresh') as HTMLButtonElement).onclick = controls.onApply;
   (scanRow.querySelector('#show-all') as HTMLButtonElement | null)?.addEventListener('click', controls.onShowAll);
   (scanRow.querySelector('#continue-details') as HTMLButtonElement | null)?.addEventListener('click', controls.onContinueDetails);
@@ -290,7 +287,7 @@ interface PickItem { key: string; label: string; color?: string }
 function makeMultiPicker(items: PickItem[], selected: string[], onSel: (v: string[]) => void) {
   const wrap = document.createElement('div');
   const search = document.createElement('input');
-  search.type = 'text'; search.placeholder = 'пошук…';
+  search.type = 'text'; search.placeholder = t('filters.search');
   const list = document.createElement('div');
   list.className = 'list-picker';
   const render = (q: string) => {
@@ -334,7 +331,7 @@ function makeCheckboxPicker(items: PickItem[], selected: string[], onSel: (v: st
   all.checked = items.length > 0 && items.every(item => selected.includes(item.key));
   all.indeterminate = selected.length > 0 && !all.checked;
   all.onchange = () => onSel(all.checked ? items.map(item => item.key) : []);
-  allLabel.append(all, document.createTextNode('Усі дії'));
+  allLabel.append(all, document.createTextNode(t('actions.all')));
   wrap.append(allLabel);
 
   const list = document.createElement('div');
@@ -385,7 +382,7 @@ function renderChips(root: HTMLElement, f: Filters, onChange: ChangeFn) {
   if (f.tFrom || f.tTo) {
     const c = document.createElement('span');
     c.className = 'chip';
-    c.innerHTML = `<span>час</span><span class="x">✕</span>`;
+    c.innerHTML = `<span>${t('filters.timeChip')}</span><span class="x">✕</span>`;
     c.querySelector('.x')!.addEventListener('click', () => onChange({ tFrom: null, tTo: null }));
     chips.append(c);
   }
@@ -406,9 +403,9 @@ export function buildLegend(root: HTMLElement, f: Filters, users: LegendUser[] |
     root.append(element);
   };
   root.replaceChildren();
-  note(`Основний колір: ${MODE_LABELS[f.mode]}`, true);
+  note(t('legend.mainColor', { mode: modeLabel(f.mode) }), true);
   if (f.mode === 'user') {
-    if (!users.length) note('Гравців у результатах немає');
+    if (!users.length) note(t('legend.noPlayers'));
     for (const u of users) {
       const d = document.createElement('div');
       d.className = 'li';
@@ -416,12 +413,12 @@ export function buildLegend(root: HTMLElement, f: Filters, users: LegendUser[] |
       swatch.className = 'sw';
       swatch.style.background = rgbHex(uuidColor(u.uuid, u.nick));
       const name = document.createElement('span');
-      name.textContent = u.nick ?? 'Невідомий гравець';
+      name.textContent = u.nick ?? t('legend.unknownPlayer');
       d.append(swatch, name);
       root.append(d);
     }
   } else if (f.mode === 'action') {
-    for (const [k, label] of Object.entries(ACTION_LABELS)) {
+    for (const k of ACTION_CODES) {
       const [src, a] = k.split(':');
       const d = document.createElement('div');
       d.className = 'li';
@@ -429,15 +426,15 @@ export function buildLegend(root: HTMLElement, f: Filters, users: LegendUser[] |
       swatch.className = 'sw';
       swatch.style.background = rgbHex(actionColor(src, +a));
       const text = document.createElement('span');
-      text.textContent = label;
+      text.textContent = actionLabel(src, +a);
       d.append(swatch, text);
       root.append(d);
     }
   } else if (f.mode === 'material') {
     root.replaceChildren();
-    note('колір = хеш матеріалу; яскравість = свіжість');
+    note(t('legend.materialHash'));
   } else {
     root.replaceChildren();
-    note('нові — теплі, старі — холодні; домішування = дія');
+    note(t('legend.timeGradient'));
   }
 }

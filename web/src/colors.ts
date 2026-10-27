@@ -1,4 +1,5 @@
 import SparkMD5 from 'spark-md5';
+import i18n, { t } from './i18n';
 
 // Система кольорів із пріоритетами режимів.
 // Основний колір визначається активним режимом забарвлення;
@@ -13,16 +14,18 @@ export interface EventLike {
   material: string | null; time: number;
 }
 
-export const ACTION_LABELS: Record<string, string> = {
-  'block:0': 'Руйнування', 'block:1': 'Встановлення', 'block:2': 'Взаємодія', 'block:3': 'Вбивство/руйнування сутності',
-  'container:0': 'Вилучено з контейнера', 'container:1': 'Поміщено до контейнера',
-  'item:2': 'Викинуто предмет', 'item:3': 'Підібрано предмет',
-  'item:4': 'Вилучено з ендер-скрині', 'item:5': 'Поміщено до ендер-скрині',
-  'item:6': 'Кинуто предмет', 'item:7': 'Вистрілено предметом',
-  'item:8': 'Зламано інструмент або броню',
-  'item:9': 'Крафт: покладено', 'item:10': 'Крафт: забрано',
-  'item:11': 'Торгівля: віддано', 'item:12': 'Торгівля: отримано',
-};
+export const ACTION_CODES = [
+  'block:0', 'block:1', 'block:2', 'block:3',
+  'container:0', 'container:1',
+  'item:2', 'item:3', 'item:4', 'item:5', 'item:6', 'item:7', 'item:8',
+  'item:9', 'item:10', 'item:11', 'item:12',
+];
+
+/** Локалізована назва дії за кодом джерела та дії. */
+export function actionLabel(src: string, action: number): string {
+  const key = `actions.${src}:${action}`;
+  return i18n.exists(key) ? t(key) : t('actions.unknown', { src, action });
+}
 
 function rgbHexNum(n: number): [number, number, number] {
   return [(n >> 16) & 255, (n >> 8) & 255, n & 255];

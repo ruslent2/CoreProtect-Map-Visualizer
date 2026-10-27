@@ -1,3 +1,4 @@
+import i18n, { t } from './i18n';
 import './style.css';
 import type { Filters, TimeSelection, BBox } from './state';
 import { calculateEffectiveTime, defaultFilters } from './state';
@@ -5,7 +6,7 @@ import { MapView } from './map';
 import { BluemapLayer } from './tiles';
 import { buildFilterPanel, buildLegend, type ScanControls } from './ui';
 import { apiAggregate, apiAuthMe, apiBlacklist, apiBlockUser, apiConfig, apiEvent, apiLogout, apiMeta, apiQueryPage, apiQueryPlan, apiRefreshMeta, apiUnblockUser, type ApiConfig, type AuthUser, type CpEvent, type MetaData, type SourceSnapshot } from './api';
-import { ACTION_LABELS, eventColor, rgbHex } from './colors';
+import { actionLabel, eventColor, rgbHex } from './colors';
 import { dedupeEvents, distributeEventsByTile, sortOccupiedTiles, tileBounds, tileKey } from './tile-utils';
 import { DetailQueueSession, DetailTileQueue, ManualScanOrchestrator } from './scan-pipeline';
 
@@ -39,7 +40,7 @@ let controller: AbortController | null = null;
 const scan = new ManualScanOrchestrator();
 let generation = 0;
 let dirty = false;
-let status = 'Натисніть «Оновити дані»';
+let status = t('status.initial');
 let rangeError: string | null = null;
 let resultBounds: BBox | null = null;
 let loading = false;
@@ -143,7 +144,7 @@ function showStatus(text: string, warning = false) {
 function markDirty() {
   scan.markDirty();
   dirty = scan.dirty;
-  if (!loading) showStatus('Є незастосовані зміни · Ctrl+Enter');
+  if (!loading) showStatus(t('status.dirty'));
   else rebuild();
 }
 
@@ -162,7 +163,7 @@ function onTimeChanged(time: TimeSelection, preserveEditor = false) {
   scan.markDirty();
   dirty = scan.dirty;
   if (!loading) {
-    status = 'Є незастосовані зміни · Ctrl+Enter';
+    status = t('status.dirty');
     statusEl.style.color = 'var(--muted)';
   }
   renderStatus();
@@ -173,14 +174,14 @@ function updateHud() {
     : `X: ${Math.floor(cursorX)} Z: ${Math.floor(cursorZ)}`;
   const displayedWorld = appliedRequest?.filters.world;
   const differentDisplayedWorld = displayedWorld && displayedWorld !== draftFilters.world
-    ? ` · показані дані: ${displayedWorld}`
+    ? t('status.displayedData', { world: displayedWorld })
     : '';
   const scale = (1 / map.cam.scale).toFixed(1);
 
   hudEl.textContent = [
-    `Світ: ${draftFilters.world}${differentDisplayedWorld}`,
+    t('status.world', { world: draftFilters.world, displayed: differentDisplayedWorld }),
     coordinates,
-    `масштаб 1:${scale}`,
+    t('status.scale', { scale }),
   ].join(' · ');
 }
 function onCamera(scale: number, cx: number, cz: number) {
@@ -259,7 +260,7 @@ async function loadDetailTile(request: AppliedRequest, key: string) {
     && map.installEventTile(request.generation, key, dedupeEvents(events), colorContext(request.filters));
 }
 function detailProgress(request: AppliedRequest) {
-  return `${detailSession?.loadedCount ?? 0}/${request.aggregateTileTotal ?? 0} плиток · ${aggregateTotal(request)} подій`;
+  return t('status.detailProgress', { loaded: detailSession?.loadedCount ?? 0, total: request.aggregateTileTotal ?? 0, events: aggregateTotal(request) });
 }
 function startMassDetails() {
   const session = detailSession, request = appliedRequest;
@@ -269,7 +270,7 @@ function startMassDetails() {
   const total = request.aggregateTileTotal ?? session.queue.size;
   let partial = 0;
   setLoading(true);
-  showStatus('Завантажується деталізація…');
+  showStatus(t('status.detailLoading'));
 
   let run: Promise<void>;
   run = (async () => {
@@ -287,7 +288,7 @@ function startMassDetails() {
         } finally {
           session.queue.complete(key, installed);
           if (isCurrent(request) && !session.isStopped) {
-            showStatus(`${partial ? 'Часткові помилки · ' : ''}деталізація: ${detailProgress(request)}`);
+            showStatus(t('status.detailing', { partial: partial ? t('status.partialErrorsPrefix') : '', progress: detailProgress(request) }));
           }
         }
       }
@@ -295,7 +296,7 @@ function startMassDetails() {
 
     await Promise.all(Array.from({ length: Math.min(session.workerCap, total) }, worker));
     if (isCurrent(request) && !session.isStopped) {
-      showStatus(`${partial ? 'Часткові помилки; ' : ''}деталізацію завершено: ${detailProgress(request)}`, partial > 0);
+      showStatus(t('status.detailDone', { partial: partial ? t('status.partialErrorsDone') : '', progress: detailProgress(request) }), partial > 0);
     }
   })().finally(() => {
     if (detailRun === run) detailRun = null;
@@ -312,12 +313,12 @@ function startSingleDetail(key: string) {
   if (!session || !request || !isCurrent(request)) return;
   const action = session.startSingle(key);
   if (action === 'prioritized') {
-    showStatus('Одну ділянку деталізації додано до черги з пріоритетом');
+    showStatus(t('status.areaQueued'));
     return;
   }
   if (action !== 'started') return;
   setLoading(true);
-  showStatus('Завантажується деталізація однієї ділянки…');
+  showStatus(t('status.areaLoading'));
 
   let run: Promise<void>;
   run = (async () => {
@@ -326,12 +327,12 @@ function startSingleDetail(key: string) {
       installed = await loadDetailTile(request, key);
     } catch (error) {
       if (!abortError(error) && isCurrent(request)) {
-        showStatus(`Помилка деталізації однієї ділянки: ${String(error)}`, true);
+        showStatus(t('status.areaError', { error: String(error) }), true);
       }
     } finally {
       session.queue.complete(key, installed);
       if (isCurrent(request) && !session.isStopped && installed) {
-        showStatus(`Деталізацію однієї ділянки завантажено: ${detailProgress(request)}`);
+        showStatus(t('status.areaLoaded', { progress: detailProgress(request) }));
       }
     }
   })().finally(() => {
@@ -380,13 +381,13 @@ async function apply() {
   setLoading(true);
   stopped = false;
   dirty = scan.dirty;
-  showStatus('Оновлення метаданих…');
+  showStatus(t('status.metadata'));
 
   try {
     meta = await apiRefreshMeta(signal);
     if (signal.aborted || localGeneration !== generation) return;
 
-    showStatus('Перевірка обсягу даних…');
+    showStatus(t('status.checkingVolume'));
     const plan = await apiQueryPlan(filters, undefined, signal);
     if (signal.aborted || localGeneration !== generation) return;
 
@@ -420,12 +421,12 @@ async function apply() {
             z2: Math.max(...events.map(event => event.z)),
           }
         : null);
-      showStatus(`${plan.totalExact ? events.length : `>${plan.threshold}`} подій завантажено`);
+      showStatus(t('status.eventsLoaded', { count: plan.totalExact ? events.length : `>${plan.threshold}` }));
       return;
     }
 
     // Large queries first display the aggregate layer and prepare detail tiles.
-    showStatus('Побудова огляду…');
+    showStatus(t('status.buildingOverview'));
     const aggregate = await apiAggregate(
       filters,
       request.snapshot,
@@ -465,11 +466,11 @@ async function apply() {
     detailSession = new DetailQueueSession(queue, config.coreProtectTiles.maxConcurrentRequests);
     detailPriority = startSingleDetail;
     setLoading(false);
-    showStatus(`Огляд повністю завантажено: ${aggregate.total} подій. Масова деталізація запускається лише кнопкою «Продовжити деталізацію»; масштаб змінює лише вигляд.`);
+    showStatus(t('status.overviewLoaded', { total: aggregate.total }));
     return;
   } catch (error) {
     if (!abortError(error) && !signal.aborted) {
-      showStatus(`Помилка; попередня карта збережена: ${String(error)}`, true);
+      showStatus(t('status.errorKeptMap', { error: String(error) }), true);
     }
   } finally {
     if (localGeneration === generation && !detailRun) {
@@ -486,7 +487,7 @@ function stop() {
   scan.stop(generation);
   controller?.abort();
   setLoading(false);
-  showStatus('Зупинено: огляд і завантажені деталі збережено');
+  showStatus(t('status.stopped'));
 }
 // Coordinates from Pixi are viewport-relative, while the tooltip is positioned inside #map-wrap.
 function onHover(events: CpEvent[] | null, sx: number, sy: number) {
@@ -512,7 +513,7 @@ function onHover(events: CpEvent[] | null, sx: number, sy: number) {
     fragment.append(item);
   }
   if (events.length > visibleEvents.length) {
-    const more = inspectorElement('div', `…ще ${events.length - visibleEvents.length} в цьому блоці`);
+    const more = inspectorElement('div', t('inspector.more', { count: events.length - visibleEvents.length }));
     more.className = 'tiny';
     fragment.append(more);
   }
@@ -530,11 +531,11 @@ function inspectorElement<K extends keyof HTMLElementTagNameMap>(tag: K, text?: 
   return element;
 }
 function eventActionLabel(event: CpEvent) {
-  return ACTION_LABELS[`${event.src}:${event.action}`] ?? `Дія ${event.src}:${event.action}`;
+  return actionLabel(event.src, event.action);
 }
 
 function localTime(epochSeconds: number) {
-  return new Date(epochSeconds * 1000).toLocaleString('uk-UA');
+  return new Date(epochSeconds * 1000).toLocaleString(i18n.resolvedLanguage);
 }
 
 function closeInspector() {
@@ -558,9 +559,9 @@ async function copyTeleport(button: HTMLButtonElement, event: CpEvent) {
   try {
     if (!navigator.clipboard?.writeText) throw new Error('Clipboard API is unavailable');
     await navigator.clipboard.writeText(command);
-    button.textContent = 'Скопійовано';
+    button.textContent = t('inspector.copied');
   } catch {
-    button.textContent = 'Буфер недоступний';
+    button.textContent = t('inspector.clipboardUnavailable');
     button.title = command;
   }
 }
@@ -576,11 +577,11 @@ function renderInspector(event: CpEvent, nearby: CpEvent[], blockEvents: CpEvent
   inspectorEl.replaceChildren();
   const heading = inspectorElement('div');
   heading.className = 'row inspector-heading';
-  const title = inspectorElement('h3', 'Подія');
+  const title = inspectorElement('h3', t('inspector.title'));
   title.className = 'inspector-title';
   const close = inspectorElement('button', '✕');
   close.type = 'button';
-  close.title = 'Закрити інспектор';
+  close.title = t('inspector.close');
   close.addEventListener('click', closeInspector);
   heading.append(title, close);
 
@@ -589,33 +590,33 @@ function renderInspector(event: CpEvent, nearby: CpEvent[], blockEvents: CpEvent
   const player = inspectorElement('h4', event.nick ?? '?');
   card.append(
     player,
-    inspectorRow('Дія', eventActionLabel(event)),
-    inspectorRow('Блок', event.material ?? '—'),
+    inspectorRow(t('inspector.action'), eventActionLabel(event)),
+    inspectorRow(t('inspector.block'), event.material ?? '—'),
   );
-  if (event.amount != null) card.append(inspectorRow('Кількість', String(event.amount)));
+  if (event.amount != null) card.append(inspectorRow(t('inspector.amount'), String(event.amount)));
   card.append(
-    inspectorRow('Координати', `${event.x} / ${event.y} / ${event.z}`),
-    inspectorRow('Світ', event.world),
-    inspectorRow('Час', localTime(event.time)),
-    inspectorRow('Відкочено (rollback)', event.rolled_back ? 'так' : 'ні'),
+    inspectorRow(t('inspector.coordinates'), `${event.x} / ${event.y} / ${event.z}`),
+    inspectorRow(t('inspector.world'), event.world),
+    inspectorRow(t('inspector.time'), localTime(event.time)),
+    inspectorRow(t('inspector.rolledBack'), event.rolled_back ? t('inspector.yes') : t('inspector.no')),
     inspectorRow('UUID', event.uuid ?? '—', true),
   );
 
   const actions = inspectorElement('div');
   actions.className = 'row inspector-actions';
-  const filterPlayer = inspectorElement('button', 'Фільтр: гравець');
+  const filterPlayer = inspectorElement('button', t('inspector.filterPlayer'));
   filterPlayer.type = 'button';
   filterPlayer.addEventListener('click', () => {
     onFiltersChanged({ users: event.nick ? [event.nick] : [], usersExcl: false });
   });
-  const copy = inspectorElement('button', 'Копіювати /tp');
+  const copy = inspectorElement('button', t('inspector.copyTp'));
   copy.type = 'button';
   copy.addEventListener('click', () => void copyTeleport(copy, event));
   actions.append(filterPlayer, copy);
 
   // Усі події в точці вже завантажено разом із плиткою карти, тому їх
   // можна вибирати без повторного клацання перекритих маркерів.
-  const blockHeading = inspectorElement('h3', `Події в блоці (${event.x}, ${event.z}) · ${blockEvents.length}`);
+  const blockHeading = inspectorElement('h3', t('inspector.blockEvents', { x: event.x, z: event.z, count: blockEvents.length }));
   const blockCard = inspectorElement('div'); blockCard.className = 'card block-events';
   for (const blockEvent of [...blockEvents].sort((left, right) => right.time - left.time || right.rowid_src - left.rowid_src)) {
     const item = inspectorElement('button', eventListLabel(blockEvent));
@@ -629,24 +630,24 @@ function renderInspector(event: CpEvent, nearby: CpEvent[], blockEvents: CpEvent
     blockCard.append(item);
   }
 
-  const nearbyHeading = inspectorElement('h3', 'Останні дії поруч (усі гравці, ±1 год, 16 блоків)');
+  const nearbyHeading = inspectorElement('h3', t('inspector.nearby'));
   const nearbyCard = inspectorElement('div');
   nearbyCard.className = 'card nearby-events';
   if (!nearby.length) {
-    const empty = inspectorElement('span', 'немає даних');
+    const empty = inspectorElement('span', t('inspector.noData'));
     empty.className = 'tiny';
     nearbyCard.append(empty);
   } else {
     for (const nearbyEvent of nearby) {
       const item = inspectorElement('div');
       item.className = 'nearby-item';
-      const actor = inspectorElement('div', `Гравець: ${nearbyEvent.nick ?? 'невідомо'}`);
+      const actor = inspectorElement('div', t('inspector.player', { nick: nearbyEvent.nick ?? t('inspector.unknownPlayer') }));
       actor.className = 'nearby-actor';
       const nearbyDetails = [
         eventActionLabel(nearbyEvent),
         nearbyEvent.material ?? '—',
         `${nearbyEvent.x}, ${nearbyEvent.y}, ${nearbyEvent.z}`,
-        new Date(nearbyEvent.time * 1000).toLocaleTimeString('uk-UA'),
+        new Date(nearbyEvent.time * 1000).toLocaleTimeString(i18n.resolvedLanguage),
       ].join(' · ');
       const details = inspectorElement('div', nearbyDetails);
       details.className = 'nearby-details';
@@ -660,7 +661,7 @@ async function showInspectorEvent(event: CpEvent, blockEvents: CpEvent[]) {
   // The monotonically increasing token ignores stale asynchronous responses.
   const request = ++inspectorRequest;
   inspectorEl.classList.add('open'); inspectorEl.replaceChildren();
-  const loadingMessage = inspectorElement('div', 'Завантаження…'); loadingMessage.className = 'tiny';
+  const loadingMessage = inspectorElement('div', t('inspector.loading')); loadingMessage.className = 'tiny';
   inspectorEl.append(loadingMessage);
   try {
     const detail = await apiEvent(event.src, event.rowid_src);
@@ -669,8 +670,8 @@ async function showInspectorEvent(event: CpEvent, blockEvents: CpEvent[]) {
   } catch {
     if (request !== inspectorRequest) return;
     inspectorEl.replaceChildren();
-    const message = inspectorElement('div', 'Не вдалося завантажити подію'); message.className = 'tiny';
-    const close = inspectorElement('button', 'Закрити'); close.type = 'button'; close.addEventListener('click', closeInspector);
+    const message = inspectorElement('div', t('inspector.loadFailed')); message.className = 'tiny';
+    const close = inspectorElement('button', t('inspector.closeButton')); close.type = 'button'; close.addEventListener('click', closeInspector);
     inspectorEl.append(message, close);
   }
 }
@@ -715,7 +716,7 @@ async function bootMap() {
 
   updateHud();
   rebuild();
-  showStatus('Натисніть «Оновити дані»');
+  showStatus(t('status.initial'));
 
   window.addEventListener('keydown', event => {
     if (!event.repeat && (event.ctrlKey || event.metaKey) && event.key === 'Enter') {
@@ -735,17 +736,17 @@ async function renderBlacklist() {
     label.textContent = user.discordId;
     const remove = document.createElement('button');
     remove.type = 'button';
-    remove.textContent = 'Розблокувати';
+    remove.textContent = t('blacklist.remove');
     remove.addEventListener('click', async () => { await apiUnblockUser(user.discordId); await renderBlacklist(); });
     row.append(label, remove);
     return row;
   }));
-  if (!result.users.length) container.textContent = 'Чорний список порожній.';
+  if (!result.users.length) container.textContent = t('blacklist.empty');
 }
 
 /** Налаштовує профіль та адміністративні дії. */
 function setupAccount(user: AuthUser) {
-  $('account-name').textContent = `${user.username} · ${user.role === 'admin' ? 'Адміністратор' : 'Модератор'}`;
+  $('account-name').textContent = `${user.username} · ${user.role === 'admin' ? t('auth.roleAdmin') : t('auth.roleModerator')}`;
   $('logout-button').addEventListener('click', async () => { await apiLogout(); location.reload(); });
   if (user.role !== 'admin') return;
   const adminButton = $('admin-button') as HTMLButtonElement;
@@ -756,15 +757,28 @@ function setupAccount(user: AuthUser) {
     const input = $('blacklist-id') as HTMLInputElement;
     const error = $('blacklist-error');
     try { await apiBlockUser(input.value.trim()); input.value = ''; error.textContent = ''; await renderBlacklist(); }
-    catch (cause) { error.textContent = `Не вдалося заблокувати: ${String(cause)}`; }
+    catch (cause) { error.textContent = t('blacklist.addFailed', { error: String(cause) }); }
+  });
+}
+
+/** Перекладає статичну розмітку з index.html (data-i18n, data-i18n-attr="атрибут:ключ"). */
+function translateStatic() {
+  document.documentElement.lang = i18n.resolvedLanguage ?? 'en';
+  document.querySelectorAll<HTMLElement>('[data-i18n]').forEach(element => {
+    element.textContent = t(element.dataset.i18n!);
+  });
+  document.querySelectorAll<HTMLElement>('[data-i18n-attr]').forEach(element => {
+    const [attribute, key] = element.dataset.i18nAttr!.split(':');
+    element.setAttribute(attribute, t(key));
   });
 }
 
 /** Перевіряє сесію перед завантаженням захищених даних. */
 async function boot() {
+  translateStatic();
   const user = await apiAuthMe();
   if (!user) {
-    if (new URLSearchParams(location.search).get('auth') === 'denied') $('auth-message').textContent = 'Немає необхідної ролі або доступ заблоковано.';
+    if (new URLSearchParams(location.search).get('auth') === 'denied') $('auth-message').textContent = t('auth.denied');
     return;
   }
   $('auth-screen').hidden = true;
@@ -773,4 +787,4 @@ async function boot() {
   await bootMap();
 }
 
-void boot().catch(error => { $('auth-message').textContent = `Помилка авторизації: ${String(error)}`; });
+void boot().catch(error => { $('auth-message').textContent = t('auth.error', { error: String(error) }); });
