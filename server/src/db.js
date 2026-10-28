@@ -28,6 +28,10 @@ export function toStr(v) {
   return String(v);
 }
 
+// TODO(i18n): поле `label` — українські назви, фронтенд їх більше не використовує
+// (назви беруться зі словників web/src/i18n/locales за ключем `actions.<src>:<action>`).
+// Під час перекладу сервера прибрати `label` звідси та з типу MetaData у web/src/ui.ts
+// або віддавати переклад за мовою запиту.
 export const ACTIONS = [
   { id: 'break', label: 'Руйнування блока', src: 'block', action: 0 },
   { id: 'place', label: 'Встановлення блока', src: 'block', action: 1 },
