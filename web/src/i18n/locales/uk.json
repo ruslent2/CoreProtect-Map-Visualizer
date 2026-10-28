@@ -1,4 +1,7 @@
 {
+  "language": {
+    "label": "Мова"
+  },
   "auth": {
     "message": "Увійдіть через Discord, щоб переглядати карту.",
     "login": "Увійти через Discord",

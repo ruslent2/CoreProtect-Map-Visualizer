@@ -9,6 +9,7 @@
 #page-header { min-height: 48px; display: flex; align-items: center; justify-content: flex-end; padding: 0 12px; border-bottom: 1px solid #30374b; background: #151925; }
 #account-bar { display: flex; align-items: center; gap: 8px; padding: 6px 0 6px 12px; }
 #account-bar button, .admin-panel button { cursor: pointer; }
+#language-select { width: auto; }
 #admin-dialog { padding: 0; width: min(560px, calc(100vw - 32px)); color: #edf1ff; border: 1px solid #424b66; border-radius: 16px; background: #171b28; }
 #admin-dialog::backdrop { background: #05070bb8; backdrop-filter: blur(4px); }
 .admin-panel { padding: 22px; }

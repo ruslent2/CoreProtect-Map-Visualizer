@@ -746,7 +746,24 @@ async function renderBlacklist() {
 
 /** Налаштовує профіль та адміністративні дії. */
 function setupAccount(user: AuthUser) {
-  $('account-name').textContent = `${user.username} · ${user.role === 'admin' ? t('auth.roleAdmin') : t('auth.roleModerator')}`;
+  const renderAccountName = () => {
+    $('account-name').textContent = `${user.username} · ${user.role === 'admin' ? t('auth.roleAdmin') : t('auth.roleModerator')}`;
+  };
+  renderAccountName();
+  const languageSelect = $('language-select') as HTMLSelectElement;
+  languageSelect.value = i18n.resolvedLanguage ?? 'en';
+  languageSelect.addEventListener('change', async () => {
+    await i18n.changeLanguage(languageSelect.value);
+    translateStatic();
+    renderAccountName();
+    if (map) {
+      closeInspector();
+      updateHud();
+      if (!appliedRequest && !dirty) status = t('status.initial');
+      showStatus(status);
+    }
+    if ($('admin-dialog').hasAttribute('open')) await renderBlacklist();
+  });
   $('logout-button').addEventListener('click', async () => { await apiLogout(); location.reload(); });
   if (user.role !== 'admin') return;
   const adminButton = $('admin-button') as HTMLButtonElement;

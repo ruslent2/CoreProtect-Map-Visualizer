@@ -1,4 +1,7 @@
 {
+  "language": {
+    "label": "Language"
+  },
   "auth": {
     "message": "Sign in with Discord to view the map.",
     "login": "Sign in with Discord",
