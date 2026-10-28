@@ -56,3 +56,16 @@ test('minecraft namespace events remain visible with their namespace removed', a
   const unfiltered=store(); unfiltered.cfg.materialNamePrefixesToStrip=[]; insert(unfiltered,'block',100,0,0,1,2); const unfilteredApp=await appFor(unfiltered);
   try { const query=(await unfilteredApp.inject('/api/query?pageSize=10')).json(); assert.equal(query.count,1); assert.equal(query.events[0].material,'minecraft:grass_block'); } finally { await unfilteredApp.close();unfiltered.close(); }
 });
+test('y filter accepts a single level, a range in either order, and open-ended bounds', async () => {
+  const s=store(); for (const y of [60,70,80,90]) s.db.prepare('INSERT INTO co_block(time,user,wid,x,y,z,type,action) VALUES(?,?,1,?,?,0,1,0)').run(100+y,1,y,y); const app=await appFor(s);
+  const ys=async query=>(await app.inject(`/api/query?pageSize=20&${query}`)).json().events.map(event=>event.y).sort((a,b)=>a-b);
+  try {
+    assert.deepEqual(await ys(''),[60,70,80,90]);
+    assert.deepEqual(await ys('y=70'),[70]);
+    assert.deepEqual(await ys('yMin=65&yMax=85'),[70,80]);
+    assert.deepEqual(await ys('yMin=85&yMax=65'),[70,80]);
+    assert.deepEqual(await ys('yMin=80'),[80,90]);
+    assert.deepEqual(await ys('yMax=70'),[60,70]);
+    assert.deepEqual(await ys('yMin=70&yMax=70'),[70]);
+  } finally { await app.close();s.close(); }
+});

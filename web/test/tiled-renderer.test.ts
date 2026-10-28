@@ -71,6 +71,28 @@ describe('tiled resource ownership and generations', () => {
     expect(state.detailTiles.has('1:0')).toBe(false);
   });
 
+  it('restyling swaps only the targeted committed tile and keeps its source events', () => {
+    const state = new TiledRenderState();
+    const old = resource(), neighbour = resource(), fresh = resource();
+    state.begin(1);
+    state.stageDetail(1, '0:0', { resources: [old], events: [], hitIndex: new Map() });
+    state.stageDetail(1, '1:0', { resources: [neighbour], events: [], hitIndex: new Map() });
+    state.commit(1);
+    expect(state.restyleDetail('0:0', { resources: [fresh], events: [], hitIndex: new Map(), sourceEvents: [] })).toBe(true);
+    expect(old.destroyed).toBe(1);
+    expect(neighbour.destroyed).toBe(0);
+    expect(state.detailTiles.get('0:0')?.resources[0]).toBe(fresh);
+    expect(state.detailTiles.get('0:0')?.sourceEvents).toEqual([]);
+  });
+
+  it('does not restyle a tile that is not committed', () => {
+    const state = new TiledRenderState();
+    const fresh = resource();
+    expect(state.restyleDetail('0:0', { resources: [fresh], events: [], hitIndex: new Map() })).toBe(false);
+    expect(state.restyleAggregate('0:0', { resources: [fresh], chunks: [] })).toBe(false);
+    expect(fresh.destroyed).toBe(0);
+  });
+
   it('destroys every staged or committed resource exactly once', () => {
     const state = new TiledRenderState();
     const replaced = resource(), staged = resource(), committed = resource();

@@ -1,6 +1,7 @@
 import { t } from './i18n';
+import { enhanceSelect } from './dropdown';
 import type { Filters, TimeSelection } from './state';
-import { epochSecondsToLocalDateTime, localDateTimeToEpochSeconds, presetTimeSelection } from './state';
+import { epochSecondsToLocalDateTime, formatYRange, localDateTimeToEpochSeconds, parseYRange, presetTimeSelection } from './state';
 import type { ColorMode } from './colors';
 import { uuidColor, actionColor, rgbHex, ACTION_CODES, actionLabel } from './colors';
 
@@ -12,6 +13,8 @@ export interface ScanControls {
   canShowAll: boolean;
   canStop: boolean;
   canContinueDetails: boolean;
+  /** Дані завантажено по всій висоті, тож Y можна змінювати без нового запиту. */
+  canLiveY: boolean;
   bluemapOpacity: number;
   lodMarkersVisible: boolean;
   onBluemapOpacity(alpha: number): void;
@@ -55,6 +58,77 @@ function splitPatternPrefix(line: string) {
   return { prefix, pattern: line.slice(prefix.length), caseSensitive: prefix.includes('(?i)') };
 }
 
+// Заголовок секції з іконкою «?»: підказка з'являється при наведенні або фокусі.
+function helpHeading(title: string, help: string, helpTitle?: string) {
+  const h = document.createElement('h3');
+  h.className = 'pattern-heading';
+  h.append(title);
+  const tip = document.createElement('span');
+  tip.className = 'help-tip';
+  tip.tabIndex = 0;
+  tip.textContent = '?';
+  const popup = document.createElement('span');
+  popup.className = 'help-tip-popup';
+  if (helpTitle) {
+    const heading = document.createElement('strong');
+    heading.textContent = helpTitle;
+    popup.append(heading, document.createElement('br'));
+  }
+  popup.append(help);
+  tip.append(popup);
+  h.append(tip);
+  return h;
+}
+
+const patternHeading = (title: string) => helpHeading(title, t('filters.patternHelp'), t('filters.patternHelpTitle'));
+
+// Секції за порядком заголовків h3 у панелі. Стан згортання зберігаємо в localStorage:
+// панель перебудовується після кожної зміни фільтра, тож DOM його не пам'ятає.
+const SECTION_IDS = ['world', 'colorMode', 'bluemap', 'time', 'yLevel', 'players', 'materials', 'actions', 'area'];
+const SECTIONS_OPEN_DEFAULT = new Set(['colorMode', 'time', 'players', 'actions']);
+const SECTIONS_STORAGE_KEY = 'filterSectionsOpen';
+
+function loadSectionState(): Record<string, boolean> {
+  try {
+    return JSON.parse(localStorage.getItem(SECTIONS_STORAGE_KEY) ?? '{}') ?? {};
+  } catch {
+    return {};
+  }
+}
+
+function saveSectionState(id: string, open: boolean) {
+  try {
+    localStorage.setItem(SECTIONS_STORAGE_KEY, JSON.stringify({ ...loadSectionState(), [id]: open }));
+  } catch { /* localStorage може бути недоступним: тоді стан діє до перебудови панелі */ }
+}
+
+// Загортає кожен h3 разом з елементами до наступного h3 у згортну секцію.
+function groupSections(root: HTMLElement) {
+  const state = loadSectionState();
+  const sections: HTMLDetailsElement[] = [];
+  let body: HTMLElement | null = null;
+  for (const node of Array.from(root.children)) {
+    if (node.tagName === 'H3') {
+      const id = SECTION_IDS[sections.length] ?? `section${sections.length}`;
+      const details = document.createElement('details');
+      details.className = 'filter-section';
+      details.open = state[id] ?? SECTIONS_OPEN_DEFAULT.has(id);
+      details.addEventListener('toggle', () => saveSectionState(id, details.open));
+      const summary = document.createElement('summary');
+      // Клік по іконці підказки не має згортати секцію.
+      summary.addEventListener('click', event => { if ((event.target as HTMLElement).closest('.help-tip')) event.preventDefault(); });
+      summary.append(node);
+      body = document.createElement('div');
+      body.className = 'filter-section-body';
+      details.append(summary, body);
+      sections.push(details);
+    } else {
+      body?.append(node);
+    }
+  }
+  root.replaceChildren(...sections);
+}
+
 export function buildFilterPanel(
   root: HTMLElement, f: Filters, time: TimeSelection, meta: MetaData, onChange: ChangeFn, onTimeChange: TimeChangeFn, controls: ScanControls
 ) {
@@ -70,13 +144,13 @@ export function buildFilterPanel(
   const worldSel = el(`<select>${meta.worlds.map(w =>
     `<option value="${w.world}" ${w.world === f.world ? 'selected' : ''}>${w.world}</option>`).join('')}</select>`) as HTMLSelectElement;
   worldSel.onchange = () => onChange({ world: worldSel.value });
-  root.append(worldSel);
+  root.append(enhanceSelect(worldSel));
 
   root.append(el(`<h3>${t('filters.colorMode')}</h3>`));
   const modeSel = el(`<select>${MODE_KEYS.map(m =>
     `<option value="${m}" ${m === f.mode ? 'selected' : ''}>${modeLabel(m)}</option>`).join('')}</select>`) as HTMLSelectElement;
   modeSel.onchange = () => onChange({ mode: modeSel.value as ColorMode });
-  root.append(modeSel);
+  root.append(enhanceSelect(modeSel));
 
   const mixRow = el(`<div class="row"><span class="tiny">${t('filters.mix')}</span><input id="mix" type="range" min="0" max="50" value="${Math.round(f.mix * 100)}"><span class="tiny" id="mixv">${Math.round(f.mix * 100)}%</span></div>`);
   mixRow.querySelector<HTMLInputElement>('#mix')!.oninput = e => {
@@ -125,19 +199,28 @@ export function buildFilterPanel(
   if (controls.error) root.append(el(`<div class="time-error">${controls.error}</div>`));
 
   // --- Рівень Y ---
-  root.append(el(`<h3>${t('filters.yLevel')}</h3>`));
-  const yInput = el(`<input type="number" placeholder="${t('filters.yPlaceholder')}" value="${f.y ?? ''}">`) as HTMLInputElement;
-  yInput.onchange = () => onChange({ y: yInput.value === '' ? null : +yInput.value });
+  root.append(helpHeading(t('filters.yLevel'), t('filters.yLevelHelp')));
+  const yInput = el(`<input type="text" autocomplete="off" spellcheck="false" placeholder="${t('filters.yPlaceholder')}">`) as HTMLInputElement;
+  yInput.value = formatYRange(f.y);
+  // Некоректний запис не застосовується; поле підсвічується, доки його не виправлять.
+  const commitY = () => {
+    const range = parseYRange(yInput.value);
+    yInput.classList.toggle('invalid', range === undefined);
+    if (range !== undefined) onChange({ y: range });
+  };
+  yInput.onchange = commitY;
+  // Рівень Y застосовується на ходу лише коли дані завантажено по всій висоті; інакше
+  // оновлення панелі під час введення забрало б фокус, тож чекаємо завершення вводу.
+  yInput.oninput = () => { if (controls.canLiveY) commitY(); };
   root.append(yInput);
 
   // --- Гравці ---
-  root.append(el(`<h3>${t('filters.players')}</h3>`));
+  root.append(patternHeading(t('filters.players')));
   const userPatterns = document.createElement('textarea');
   userPatterns.className = 'pattern-input';
   userPatterns.rows = 5;
   userPatterns.placeholder = t('filters.patternPlaceholder');
   userPatterns.value = f.users.join('\n');
-  userPatterns.title = t('filters.patternTitle');
   const userPatternWrap = document.createElement('div');
   userPatternWrap.className = 'pattern-autocomplete';
   const suggestions = document.createElement('div');
@@ -185,16 +268,14 @@ export function buildFilterPanel(
   userPatterns.onfocus = updateSuggestions;
   userPatterns.onblur = () => { commitUserPatterns(); window.setTimeout(hideSuggestions, 150); };
   root.append(userPatternWrap);
-  root.append(el(`<div class="tiny pattern-help">${t('filters.patternHelp')}</div>`));
 
   // --- Матеріали ---
-  root.append(el(`<h3>${t('filters.materials')}</h3>`));
+  root.append(patternHeading(t('filters.materials')));
   const materialPatterns = document.createElement('textarea');
   materialPatterns.className = 'pattern-input';
   materialPatterns.rows = 5;
   materialPatterns.placeholder = t('filters.patternPlaceholder');
   materialPatterns.value = f.materials.join('\n');
-  materialPatterns.title = t('filters.patternTitle');
   const materialPatternWrap = document.createElement('div');
   materialPatternWrap.className = 'pattern-autocomplete';
   const materialSuggestions = document.createElement('div');
@@ -237,9 +318,6 @@ export function buildFilterPanel(
     window.setTimeout(() => { materialSuggestions.hidden = true; }, 150);
   };
   root.append(materialPatternWrap);
-  root.append(el(`<div class="tiny pattern-help">${t('filters.patternHelp')}</div>`));
-  const matExcl = makeExclToggle('materialsExcl', f, onChange, t('filters.excludeSelected'));
-  root.append(matExcl);
 
   // --- Дії ---
   root.append(el(`<h3>${t('filters.actions')}</h3>`));
@@ -249,9 +327,8 @@ export function buildFilterPanel(
     label: actionLabel(a.src, a.action),
     color: rgbHex(actionColor(a.src, a.action)),
   }));
-  const actSel = makeCheckboxPicker(actionItems, f.actions, v => onChange({ actions: v }));
   const actExcl = makeExclToggle('actionsExcl', f, onChange, t('filters.excludeSelected'));
-  root.append(actExcl, actSel);
+  root.append(makeCheckboxPicker(actionItems, f.actions, v => onChange({ actions: v }), actExcl));
 
   // --- Ділянка ---
   root.append(el(`<h3>${t('filters.area')}</h3>`));
@@ -259,15 +336,17 @@ export function buildFilterPanel(
   (bboxRow.querySelector('#bbox-clear') as HTMLButtonElement).onclick = () => onChange({ bbox: null });
   root.append(bboxRow);
 
-  const scanRow = el(`<div class="scan-controls"><div class="tiny">${controls.status}</div><div class="row"><button class="primary" id="refresh">${t('buttons.refresh')}</button>${controls.canShowAll ? `<button id="show-all">${t('buttons.showAll')}</button>` : ''}${controls.canContinueDetails ? `<button id="continue-details">${t('buttons.continueDetails')}</button>` : ''}${controls.canStop ? `<button id="stop">${t('buttons.stop')}</button>` : ''}</div></div>`);
+  groupSections(root);
+
+  // Чипи йдуть перед кнопками: кнопки закріплені внизу панелі (sticky) і мають бути останніми.
+  renderChips(root, f, onChange);
+
+  const scanRow = el(`<div class="scan-controls"><div class="row"><button class="primary" id="refresh">${t('buttons.refresh')}</button>${controls.canShowAll ? `<button id="show-all">${t('buttons.showAll')}</button>` : ''}${controls.canContinueDetails ? `<button id="continue-details">${t('buttons.continueDetails')}</button>` : ''}${controls.canStop ? `<button id="stop">${t('buttons.stop')}</button>` : ''}</div></div>`);
   (scanRow.querySelector('#refresh') as HTMLButtonElement).onclick = controls.onApply;
   (scanRow.querySelector('#show-all') as HTMLButtonElement | null)?.addEventListener('click', controls.onShowAll);
   (scanRow.querySelector('#continue-details') as HTMLButtonElement | null)?.addEventListener('click', controls.onContinueDetails);
   (scanRow.querySelector('#stop') as HTMLButtonElement | null)?.addEventListener('click', controls.onStop);
   root.append(scanRow);
-
-  // Чипи вибраних значень
-  renderChips(root, f, onChange);
 }
 
 function bboxText(b: NonNullable<Filters['bbox']>) {
@@ -320,7 +399,7 @@ function makeMultiPicker(items: PickItem[], selected: string[], onSel: (v: strin
   return wrap;
 }
 
-function makeCheckboxPicker(items: PickItem[], selected: string[], onSel: (v: string[]) => void) {
+function makeCheckboxPicker(items: PickItem[], selected: string[], onSel: (v: string[]) => void, headerExtra?: HTMLElement) {
   const wrap = document.createElement('div');
   wrap.className = 'checkbox-picker';
 
@@ -332,7 +411,11 @@ function makeCheckboxPicker(items: PickItem[], selected: string[], onSel: (v: st
   all.indeterminate = selected.length > 0 && !all.checked;
   all.onchange = () => onSel(all.checked ? items.map(item => item.key) : []);
   allLabel.append(all, document.createTextNode(t('actions.all')));
-  wrap.append(allLabel);
+  const allRow = document.createElement('div');
+  allRow.className = 'checkbox-all-row';
+  allRow.append(allLabel);
+  if (headerExtra) allRow.append(headerExtra);
+  wrap.append(allRow);
 
   const list = document.createElement('div');
   list.className = 'checkbox-list';

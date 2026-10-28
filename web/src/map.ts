@@ -2,7 +2,8 @@ import { Application, Container, Sprite, Texture, Graphics } from 'pixi.js';
 import type { CpEvent, Chunk } from './api';
 import { eventColor, actionColor, uuidColor, type ColorContext } from './colors';
 import { coordinateToTile } from './tile-utils';
-import { TiledRenderState, aggregateLodCells, createEventHitIndex, detailLodCells, MIN_LOD_MARKER_SCREEN_PX, shouldDisplayLodMarkers, tileKeyForBlock, tileOriginFromKey, tileRasterParts, DEFAULT_TILE_RENDERER_CONFIG, type TileRendererConfig, type TileResource } from './tiled-renderer';
+import { yRangeContains, type YRange } from './state';
+import { TiledRenderState, aggregateLodCells, createEventHitIndex, detailLodCells, MIN_LOD_MARKER_SCREEN_PX, shouldDisplayLodMarkers, tileKeyForBlock, tileOriginFromKey, tileRasterParts, DEFAULT_TILE_RENDERER_CONFIG, type AggregateTileState, type DetailTileState, type TileRendererConfig, type TileResource } from './tiled-renderer';
 
 const MIN_SCALE = 1 / 16; // 1 пиксель = 16 блоков; обзор чанков остаётся читаемым
 const MAX_SCALE = 64;
@@ -47,6 +48,8 @@ export class MapView {
   private lastCamera = '';
   private lodScale = NaN;
   private lodMarkersVisible = true;
+  /** Локальний фільтр за Y: застосовується до вже завантажених подій, без запиту. */
+  private yFilter: YRange | null = null;
   private dragBtn = -1;
   private dragStart = { x: 0, y: 0, cx: 0, cz: 0 };
   private selStart: { x: number; z: number } | null = null;
@@ -94,6 +97,8 @@ export class MapView {
   beginDataGeneration(generation: number) {
     this.state.begin(generation);
     this.destroyStaged();
+    // Нове покоління завантажене сервером за фільтрами, тож локальний Y-фільтр скидається.
+    this.yFilter = null;
 
     this.stagedLod = new Container();
     this.stagedAggregate = new Container();
@@ -119,9 +124,28 @@ export class MapView {
       return false;
     }
 
+    const tile = this.buildEventTile(key, events, ctx, this.stagedDetail, this.stagedLod);
+    const staged = this.state.stageDetail(generation, key, tile);
+
+    if (!staged) {
+      tile.resources.forEach(resource => resource.destroy());
+    }
+
+    return staged;
+  }
+
+  /** Rasterize one event tile (and its LOD markers) from every loaded event, honouring the Y filter. */
+  private buildEventTile(
+    key: string,
+    events: CpEvent[],
+    ctx: ColorContext,
+    rasterLayer: Container,
+    lodLayer: Container,
+  ): DetailTileState {
     const o = tileOriginFromKey(key, this.cfg.tileSize);
-    const hit = createEventHitIndex(events);
-    const resources = this.raster(o.x1, o.z1, this.stagedDetail, (c, ox, oz) => {
+    const shown = this.yFilter == null ? events : events.filter(e => yRangeContains(this.yFilter, e.y));
+    const hit = createEventHitIndex(shown);
+    const resources = this.raster(o.x1, o.z1, rasterLayer, (c, ox, oz) => {
       const g = c.getContext('2d')!;
       const im = g.createImageData(c.width, c.height);
 
@@ -146,18 +170,8 @@ export class MapView {
       g.putImageData(im, 0, 0);
     });
 
-    resources.push(this.createDetailLod(events, ctx, this.stagedLod));
-    const staged = this.state.stageDetail(generation, key, {
-      resources,
-      events: hit.events,
-      hitIndex: hit.byBlock,
-    });
-
-    if (!staged) {
-      resources.forEach(resource => resource.destroy());
-    }
-
-    return staged;
+    resources.push(this.createDetailLod(hit.events, ctx, lodLayer));
+    return { resources, events: hit.events, hitIndex: hit.byBlock, sourceEvents: events };
   }
 
   /** Rasterize aggregate chunks and their low-detail markers into staging. */
@@ -171,9 +185,26 @@ export class MapView {
       return false;
     }
 
+    const tile = this.buildAggregateTile(key, chunks, ctx, this.stagedAggregate, this.stagedLod);
+    const staged = this.state.stageAggregate(generation, key, tile);
+
+    if (!staged) {
+      tile.resources.forEach(resource => resource.destroy());
+    }
+
+    return staged;
+  }
+
+  private buildAggregateTile(
+    key: string,
+    chunks: Chunk[],
+    ctx: ColorContext,
+    rasterLayer: Container,
+    lodLayer: Container,
+  ): AggregateTileState {
     const o = tileOriginFromKey(key, this.cfg.tileSize);
     const max = Math.max(1, ...chunks.map(c => c.cnt));
-    const resources = this.raster(o.x1, o.z1, this.stagedAggregate, (canvas, ox, oz) => {
+    const resources = this.raster(o.x1, o.z1, rasterLayer, (canvas, ox, oz) => {
       const g = canvas.getContext('2d')!;
 
       for (const c of chunks) {
@@ -190,17 +221,8 @@ export class MapView {
       }
     });
 
-    resources.push(this.createAggregateLod(chunks, ctx, max, this.stagedLod));
-    const staged = this.state.stageAggregate(generation, key, {
-      resources,
-      chunks: [...chunks],
-    });
-
-    if (!staged) {
-      resources.forEach(resource => resource.destroy());
-    }
-
-    return staged;
+    resources.push(this.createAggregateLod(chunks, ctx, max, lodLayer));
+    return { resources, chunks: [...chunks] };
   }
 
   /** Immediately install a detailed event tile over its aggregate counterpart. */
@@ -210,48 +232,57 @@ export class MapView {
     events: CpEvent[],
     ctx: ColorContext,
   ): boolean {
-    const o = tileOriginFromKey(key, this.cfg.tileSize);
-    const hit = createEventHitIndex(events);
-    const resources = this.raster(o.x1, o.z1, this.detailLayer, (c, ox, oz) => {
-      const g = c.getContext('2d')!;
-      const im = g.createImageData(c.width, c.height);
-
-      // Малюємо від старих до нових, щоб найновіша подія залишалась зверху.
-      for (let j = hit.events.length - 1; j >= 0; j--) {
-        const e = hit.events[j];
-        const x = Math.floor(e.x) - o.x1 - ox;
-        const z = Math.floor(e.z) - o.z1 - oz;
-
-        if (x < 0 || z < 0 || x >= c.width || z >= c.height) {
-          continue;
-        }
-
-        const [r, gg, b] = eventColor(e, ctx);
-        const i = (z * c.width + x) * 4;
-        im.data[i] = r;
-        im.data[i + 1] = gg;
-        im.data[i + 2] = b;
-        im.data[i + 3] = 235;
-      }
-
-      g.putImageData(im, 0, 0);
-    });
-
-    resources.push(this.createDetailLod(events, ctx, this.lodLayer));
-    const installed = this.state.installDetail(generation, key, {
-      resources,
-      events: hit.events,
-      hitIndex: hit.byBlock,
-    });
+    const tile = this.buildEventTile(key, events, ctx, this.detailLayer, this.lodLayer);
+    const installed = this.state.installDetail(generation, key, tile);
 
     if (!installed) {
-      resources.forEach(resource => resource.destroy());
+      tile.resources.forEach(resource => resource.destroy());
     } else {
       this.setAggregateTileVisible(key, false);
       this.updateLodGraphics();
     }
 
     return installed;
+  }
+
+  /**
+   * Redraws every committed tile from the data already in memory: a new colour
+   * context and, when `y` is given, a new local Y filter (null = all heights).
+   * Nothing is requested from the server.
+   */
+  restyle(ctx: ColorContext, y?: YRange | null) {
+    if (y !== undefined) {
+      this.yFilter = y;
+    }
+
+    // Нові ресурси додаються в ті самі контейнери, що й старі: беремо їх з батьків.
+    const layers = (resources: TileResource[]) => ({
+      raster: (resources[0] as PixiResource | undefined)?.displayObject.parent,
+      lod: (resources[resources.length - 1] as PixiResource | undefined)?.displayObject.parent,
+    });
+    // Агрегатна плитка, перекрита детальною, лишається прихованою.
+    const keepVisibility = (from: TileResource[], to: TileResource[]) => {
+      const visible = (from[0] as PixiResource | undefined)?.displayObject.visible ?? true;
+      to.forEach(resource => { (resource as PixiResource).displayObject.visible = visible; });
+    };
+
+    for (const [key, tile] of [...this.state.detailTiles]) {
+      const { raster, lod } = layers(tile.resources);
+      if (!raster || !lod) continue;
+      this.state.restyleDetail(key, this.buildEventTile(key, tile.sourceEvents ?? tile.events, ctx, raster, lod));
+    }
+
+    for (const [key, tile] of [...this.state.aggregateTiles]) {
+      const { raster, lod } = layers(tile.resources);
+      if (!raster || !lod) continue;
+      const next = this.buildAggregateTile(key, tile.chunks, ctx, raster, lod);
+      keepVisibility(tile.resources, next.resources);
+      this.state.restyleAggregate(key, next);
+    }
+
+    this.lodScale = NaN;
+    this.updateLodGraphics();
+    this.hoverKey = '';
   }
 
   removeEventTile(generation: number, key: string) {

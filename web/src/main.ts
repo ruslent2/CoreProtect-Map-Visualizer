@@ -1,10 +1,11 @@
 import i18n, { t } from './i18n';
 import './style.css';
-import type { Filters, TimeSelection, BBox } from './state';
-import { calculateEffectiveTime, defaultFilters } from './state';
+import type { Filters, TimeSelection, BBox, YRange } from './state';
+import { calculateEffectiveTime, defaultFilters, sameYRange } from './state';
 import { MapView } from './map';
 import { BluemapLayer } from './tiles';
 import { buildFilterPanel, buildLegend, type ScanControls } from './ui';
+import { enhanceSelect } from './dropdown';
 import { apiAggregate, apiAuthMe, apiBlacklist, apiBlockUser, apiConfig, apiEvent, apiLogout, apiMeta, apiQueryPage, apiQueryPlan, apiRefreshMeta, apiUnblockUser, type ApiConfig, type AuthUser, type CpEvent, type MetaData, type SourceSnapshot } from './api';
 import { actionLabel, eventColor, rgbHex } from './colors';
 import { dedupeEvents, distributeEventsByTile, sortOccupiedTiles, tileBounds, tileKey } from './tile-utils';
@@ -61,6 +62,7 @@ function cloneFilters(filters: Filters): Filters {
   return {
     ...filters,
     bbox: filters.bbox && { ...filters.bbox },
+    y: filters.y && { ...filters.y },
     users: [...filters.users],
     actions: [...filters.actions],
     materials: [...filters.materials],
@@ -79,6 +81,7 @@ function controls(): ScanControls {
     canShowAll: !!resultBounds,
     canStop: loading || (!!detailSession && !detailSession.isStopped),
     canContinueDetails: !!detailSession?.isPaused,
+    canLiveY: canLiveY(),
     bluemapOpacity,
     lodMarkersVisible,
     onBluemapOpacity: alpha => {
@@ -148,11 +151,54 @@ function markDirty() {
   else rebuild();
 }
 
+// Рівень Y можна змінювати локально, лише якщо завантажено події по всій висоті:
+// запит без Y і всі плитки вже мають точні події (немає агрегатів без деталізації).
+function canLiveY() {
+  const request = appliedRequest;
+  if (!request || request.filters.y != null) return false;
+  if (request.aggregateTileTotal == null) return true;
+  return !!detailSession && detailSession.loadedCount >= request.aggregateTileTotal;
+}
+
+// Режим забарвлення, домішування й (за можливості) Y лише перемальовують завантажені дані.
+// Пауза дає користувачеві завершити введення, перш ніж перемальовувати карту.
+const VIEW_APPLY_DELAY_MS = 250;
+let viewTimer: number | null = null;
+let shownLiveY: YRange | null = null; // Y, застосований локально до завантажених даних
+function scheduleViewApply() {
+  if (viewTimer != null) window.clearTimeout(viewTimer);
+  viewTimer = window.setTimeout(applyView, VIEW_APPLY_DELAY_MS);
+}
+function applyView() {
+  viewTimer = null;
+  const request = appliedRequest;
+  if (!request) {
+    buildLegend(legendEl, draftFilters, resultUsers);
+    return;
+  }
+  // Деталізація, що ще надходить, малюється за знімком запиту, тож оновлюємо й його.
+  request.filters.mode = draftFilters.mode;
+  request.filters.mix = draftFilters.mix;
+  const liveY = canLiveY();
+  map.restyle(colorContext(request.filters), liveY ? draftFilters.y : undefined);
+  if (liveY) shownLiveY = draftFilters.y;
+  buildLegend(legendEl, request.filters, resultUsers);
+  // Y змінився, але даних по всій висоті немає: потрібне «Оновити дані».
+  if (!liveY && !sameYRange(draftFilters.y, shownLiveY ?? request.filters.y)) markDirty();
+}
+
 function onFiltersChanged(patch: Partial<Filters>) {
   Object.assign(draftFilters, patch);
   if (patch.world && bluemap) {
     bluemap.setWorld(draftFilters.world);
+    onCamera(map.cam.scale, map.cam.cx, map.cam.cz); // шар очищено, тож одразу вантажимо тайли нового світу
     updateHud();
+  }
+  const keys = Object.keys(patch) as (keyof Filters)[];
+  const viewOnly = keys.length > 0 && keys.every(key => key === 'mode' || key === 'mix' || (key === 'y' && canLiveY()));
+  if (viewOnly) {
+    scheduleViewApply();
+    return;
   }
   markDirty();
 }
@@ -378,6 +424,7 @@ async function apply() {
   filters.tTo = effective.to;
   const localGeneration = scan.start();
   generation = localGeneration;
+  shownLiveY = null;
   setLoading(true);
   stopped = false;
   dirty = scan.dirty;
@@ -713,6 +760,9 @@ async function bootMap() {
   map.world.addChildAt(bluemap.container, 0);
   bluemap.setOpacity(bluemapOpacity);
   bluemap.setWorld(draftFilters.world);
+  // Камера вже повідомила про свій стан до створення шару, тож без цього тайли
+  // з'являються лише після першої зміни масштабу.
+  onCamera(map.cam.scale, map.cam.cx, map.cam.cz);
 
   updateHud();
   rebuild();
@@ -752,6 +802,7 @@ function setupAccount(user: AuthUser) {
   renderAccountName();
   const languageSelect = $('language-select') as HTMLSelectElement;
   languageSelect.value = i18n.resolvedLanguage ?? 'en';
+  enhanceSelect(languageSelect);
   languageSelect.addEventListener('change', async () => {
     await i18n.changeLanguage(languageSelect.value);
     translateStatic();

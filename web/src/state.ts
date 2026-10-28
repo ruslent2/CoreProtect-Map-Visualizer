@@ -25,6 +25,39 @@ export const NON_MEANINGFUL_FILTER_VALUES = {
 // This is only used until the server-provided default can be supplied by the caller.
 export const SAFE_DEFAULT_FILTER_LIMIT = 50_000;
 
+/** Діапазон висот Y, межі включно; одне значення дає min === max. */
+export interface YRange { min: number; max: number }
+
+// Одне число або діапазон через «-», «–», «—», «:» чи «..»; порядок меж не важливий: 107-83 = 83-107.
+const Y_RANGE_PATTERN = /^(-?\d+)\s*(?:(?:-|–|—|:|\.\.)\s*(-?\d+))?$/;
+
+/** Розбирає введений текст: порожньо → null, помилка → undefined. */
+export function parseYRange(text: string): YRange | null | undefined {
+  const trimmed = text.trim();
+  if (trimmed === '') return null;
+  const match = Y_RANGE_PATTERN.exec(trimmed);
+  if (!match) return undefined;
+  const first = Number(match[1]);
+  const second = match[2] == null ? first : Number(match[2]);
+  if (!Number.isSafeInteger(first) || !Number.isSafeInteger(second)) return undefined;
+  return { min: Math.min(first, second), max: Math.max(first, second) };
+}
+
+export function formatYRange(range: YRange | null): string {
+  if (!range) return '';
+  if (range.min === range.max) return String(range.min);
+  // Від'ємні межі розділяємо «..», щоб запис лишався однозначним.
+  return `${range.min}${range.min < 0 || range.max < 0 ? '..' : '-'}${range.max}`;
+}
+
+export function sameYRange(a: YRange | null, b: YRange | null): boolean {
+  return a === b || (!!a && !!b && a.min === b.min && a.max === b.max);
+}
+
+export function yRangeContains(range: YRange | null, y: number): boolean {
+  return range == null || (y >= range.min && y <= range.max);
+}
+
 export interface Filters {
   world: string;
   bbox: BBox | null;
@@ -33,7 +66,7 @@ export interface Filters {
   materials: string[];    materialsExcl: boolean;
   tFrom: number | null;
   tTo: number | null;
-  y: number | null;
+  y: YRange | null;
   limit: number;
   mode: ColorMode;
   mix: number;
@@ -139,7 +172,7 @@ export function filtersToQuery(f: Filters, extra: Record<string, string> = {}): 
   if (f.materials.length) { p.set('materials', f.materials.join(',')); if (f.materialsExcl) p.set('materialsExcl', '1'); }
   if (f.tFrom != null) p.set('tFrom', String(f.tFrom));
   if (f.tTo != null) p.set('tTo', String(f.tTo));
-  if (f.y != null) p.set('y', String(f.y));
+  if (f.y) { p.set('yMin', String(f.y.min)); p.set('yMax', String(f.y.max)); }
   p.set('limit', String(f.limit));
   for (const [k, v] of Object.entries(extra)) p.set(k, v);
   return p.toString();

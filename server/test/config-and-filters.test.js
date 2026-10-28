@@ -109,6 +109,16 @@ test('parseFilters accepts list inputs and clamps limits without a bypass', () =
   assert.equal(filters.materialsExcl, true);
 });
 
+test('parseFilters expands y into a range and orders reversed bounds', () => {
+  const single = parseFilters({ y: '64' });
+  assert.deepEqual([single.yMin, single.yMax], [64, 64]);
+  const reversed = parseFilters({ yMin: '107', yMax: '83' });
+  assert.deepEqual([reversed.yMin, reversed.yMax], [83, 107]);
+  const open = parseFilters({ yMin: '10', yMax: '' });
+  assert.equal(open.yMin, 10);
+  assert.equal(open.yMax, undefined);
+});
+
 for (const [query, message] of [
   [{ x1: '3', x2: '2' }, 'reverse x bbox'],
   [{ z1: '3', z2: '2' }, 'reverse z bbox'],
@@ -116,6 +126,8 @@ for (const [query, message] of [
   [{ y: '1.5' }, 'fractional number'],
   [{ limit: 'Infinity' }, 'non-finite number'],
   [{ y: '9007199254740992' }, 'unsafe integer'],
+  [{ yMin: '1.5' }, 'fractional yMin'],
+  [{ yMax: 'abc' }, 'non-numeric yMax'],
   [{ x1: '1', x2: '2' }, 'partial bbox'],
   [{ actions: 'unknown' }, 'unknown action'],
   [{ actionsExcl: 'yes' }, 'ambiguous boolean'],

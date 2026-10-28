@@ -83,11 +83,24 @@ export function parseFilters(query) {
 
   for (const key of [
     'x1', 'x2', 'z1', 'z2', 'xMin', 'xMaxExclusive', 'zMin',
-    'zMaxExclusive', 'y', 'tFrom', 'tTo', 'limit', 'pageSize', 'tileSize',
+    'zMaxExclusive', 'y', 'yMin', 'yMax', 'tFrom', 'tTo', 'limit', 'pageSize', 'tileSize',
   ]) {
     if (q[key] != null && q[key] !== '') {
       q[key] = asInteger(q[key], key);
     }
+  }
+
+  // `y` — один рівень, `yMin`/`yMax` — діапазон з однією відкритою межею;
+  // обернений порядок меж (107-83) приймаємо як 83-107.
+  for (const key of ['y', 'yMin', 'yMax']) {
+    if (q[key] === '') delete q[key];
+  }
+  if (q.y != null) {
+    q.yMin ??= q.y;
+    q.yMax ??= q.y;
+  }
+  if (q.yMin != null && q.yMax != null && q.yMin > q.yMax) {
+    [q.yMin, q.yMax] = [q.yMax, q.yMin];
   }
 
   if (q.x1 != null && q.x2 != null && q.x1 > q.x2) {
@@ -284,9 +297,13 @@ function plans(store, q, snapshot) {
       zMaxExclusive: q.zMaxExclusive,
     });
   }
-  if (q.y != null) {
-    common.push('y=@y');
-    params.y = q.y;
+  if (q.yMin != null) {
+    common.push('y>=@yMin');
+    params.yMin = q.yMin;
+  }
+  if (q.yMax != null) {
+    common.push('y<=@yMax');
+    params.yMax = q.yMax;
   }
   if (q.tFrom != null) {
     common.push('time>=@tFrom');

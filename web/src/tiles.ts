@@ -32,10 +32,14 @@ export class BluemapLayer {
   private lastView = '';
   private tiles = new Map<string, Sprite>();
   private pending = new Set<string>();
+  /** Тайли, яких немає на сервері (порожні ділянки): вони теж вважаються «завантаженими». */
+  private missing = new Set<string>();
+  private view: { x1: number; z1: number; x2: number; z2: number } | null = null;
   private opacity = 0.9;
 
   constructor(cfg: BluemapConfig) {
     this.cfg = cfg;
+    this.container.sortableChildren = true;
   }
 
   setWorld(world: string) {
@@ -48,6 +52,7 @@ export class BluemapLayer {
   clear() {
     this.generation++;
     this.pending.clear();
+    this.missing.clear();
     this.lastView = '';
     for (const s of this.tiles.values()) s.destroy({ texture: true, textureSource: true });
     this.tiles.clear();
@@ -69,10 +74,9 @@ export class BluemapLayer {
     // zoom=3: 1 = 25 блоков.
     const z = Math.min(this.cfg.maxZoom,
       Math.max(1, 1 + lod));
-    if (z !== this.zoom) {
-      this.zoom = z;
-      this.clear();
-    }
+    // Тайли попереднього рівня лишаються на екрані, доки їх не перекриють тайли нового.
+    this.zoom = z;
+    this.view = view;
     const viewKey = `${z}:${Math.floor(view.x1)}:${Math.floor(view.z1)}:${Math.ceil(view.x2)}:${Math.ceil(view.z2)}`;
     if (viewKey === this.lastView) return;
     this.lastView = viewKey;
@@ -84,21 +88,49 @@ export class BluemapLayer {
     const tz1 = Math.floor(view.z1 / tileHeightBlocks), tz2 = Math.floor(view.z2 / tileHeightBlocks);
     if ((tx2 - tx1 + 1) * (tz2 - tz1 + 1) > 400) return; // слишком далеко — не грузим
 
-    const need = new Set<string>();
     for (let tx = tx1; tx <= tx2; tx++) for (let tz = tz1; tz <= tz2; tz++) {
-      need.add(this.k(z, tx, tz));
       this.load(z, tx, tz, bpt, tileHeightBlocks);
     }
-    // выгрузить невидимые
-    for (const [key, s] of this.tiles) {
-      if (!need.has(key)) {
-        s.destroy({ texture: true, textureSource: true });
+    this.prune();
+  }
+
+  private k(z: number, tx: number, tz: number) { return `${z}/${tx}/${tz}`; }
+
+  private tileBlocks(z: number) {
+    const width = this.cfg.blocksPerTileAtZoom0 * Math.pow(this.cfg.lodFactor, z - 1);
+    return { width, height: width * this.cfg.tileAspectRatio };
+  }
+
+  /**
+   * Вивантажує тайли поза екраном, а також тайли інших рівнів масштабу, щойно видиму
+   * частину їхньої площі перекрили тайли поточного рівня (відсутній тайл теж перекриває).
+   */
+  private prune() {
+    const view = this.view;
+    if (!view) return;
+    const current = this.tileBlocks(this.zoom);
+    for (const [key, sprite] of this.tiles) {
+      const [z, tx, tz] = key.split('/').map(Number);
+      const size = this.tileBlocks(z);
+      // Видима частина площі тайла в блоках.
+      const x1 = Math.max(tx * size.width, view.x1), x2 = Math.min((tx + 1) * size.width, view.x2);
+      const z1 = Math.max(tz * size.height, view.z1), z2 = Math.min((tz + 1) * size.height, view.z2);
+      let remove = x1 > x2 || z1 > z2;
+      if (!remove && z !== this.zoom) {
+        remove = true;
+        for (let cx = Math.floor(x1 / current.width); remove && cx <= Math.floor(x2 / current.width); cx++) {
+          for (let cz = Math.floor(z1 / current.height); cz <= Math.floor(z2 / current.height); cz++) {
+            const covering = this.k(this.zoom, cx, cz);
+            if (!this.tiles.has(covering) && !this.missing.has(covering)) { remove = false; break; }
+          }
+        }
+      }
+      if (remove) {
+        sprite.destroy({ texture: true, textureSource: true });
         this.tiles.delete(key);
       }
     }
   }
-
-  private k(z: number, tx: number, tz: number) { return `${z}/${tx}/${tz}`; }
 
   private load(z: number, tx: number, tz: number, bpt: number, tileHeightBlocks: number) {
     const key = this.k(z, tx, tz);
@@ -124,10 +156,20 @@ export class BluemapLayer {
       s.position.set(tx * bpt, tz * tileHeightBlocks);
       s.width = bpt; s.height = tileHeightBlocks;
       s.alpha = this.opacity;
+      // Дрібніші тайли (менший zoom) лежать над грубішими, що ще не вивантажені.
+      s.zIndex = -z;
       this.container.addChild(s);
       this.tiles.set(key, s);
+      this.missing.delete(key);
+      this.prune();
     };
-    img.onerror = () => this.pending.delete(key);
+    img.onerror = () => {
+      this.pending.delete(key);
+      if (generation === this.generation) {
+        this.missing.add(key);
+        this.prune();
+      }
+    };
     img.src = url;
   }
 

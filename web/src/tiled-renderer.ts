@@ -113,8 +113,11 @@ export interface TileResource {
 
 export interface DetailTileState {
   resources: TileResource[];
+  /** Події, що зараз видно (після локального фільтра за Y). */
   events: CpEvent[];
   hitIndex: Map<string, CpEvent[]>;
+  /** Усі завантажені події плитки: з них перемальовуємо вигляд без нового запиту. */
+  sourceEvents?: CpEvent[];
 }
 
 export interface AggregateTileState {
@@ -166,6 +169,19 @@ export class TiledRenderState {
   installDetail(generation: number, key: string, state: DetailTileState): boolean {
     if (this.stagingGeneration !== null || generation !== this.committedGeneration) return false;
     this.replace(this.detailTiles, key, state);
+    return true;
+  }
+
+  /** Swaps the resources of a committed tile for freshly drawn ones (local restyle). */
+  restyleDetail(key: string, state: DetailTileState): boolean {
+    if (!this.detailTiles.has(key)) return false;
+    this.replace(this.detailTiles, key, state);
+    return true;
+  }
+
+  restyleAggregate(key: string, state: AggregateTileState): boolean {
+    if (!this.aggregateTiles.has(key)) return false;
+    this.replace(this.aggregateTiles, key, state);
     return true;
   }
 
