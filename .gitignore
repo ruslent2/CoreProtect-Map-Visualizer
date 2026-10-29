@@ -24,3 +24,8 @@ __pycache__/
 make_sample_db.py
 recover_db.py
 check_coreprotect_db.py
+
+# Environment files
+.env
+.env.*
+!.env.example

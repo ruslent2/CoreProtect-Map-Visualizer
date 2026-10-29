@@ -1,4 +1,4 @@
-# PROJECT_CONTEXT.md — CoreProtect Map Visualizer
+# PROJECT_CONTEXT.md — GrieferFinder (Map Visualizer for CoreProtect)
 
 Веб-карта для админов Minecraft-сервера: показывает события CoreProtect (кто, что, где сломал/поставил/взял/убил) в виде цветных точек/чанков поверх top-down проекции мира, с фильтрами по игроку/действию/материалу/времени/области и опциональной растровой подложкой Bluemap.
 

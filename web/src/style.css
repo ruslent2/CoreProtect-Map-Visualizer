@@ -1,5 +1,5 @@
 /* Авторизація приховує карту до підтвердження Discord-ролі. */
-.auth-screen { min-height: 100vh; display: grid; place-items: center; padding: 24px; background: radial-gradient(circle at top, #28345a 0, #10131d 52%, #090b11 100%); }
+.auth-screen { position: relative; min-height: 100vh; display: grid; place-items: center; padding: 24px; background: radial-gradient(circle at top, #28345a 0, #10131d 52%, #090b11 100%); }
 .auth-screen[hidden], #app[hidden] { display: none !important; }
 .auth-card { width: min(430px, 100%); padding: 42px; text-align: center; border: 1px solid #39415a; border-radius: 24px; background: rgba(20, 24, 36, .94); box-shadow: 0 24px 80px #0008; }
 .auth-card h1 { margin: 16px 0 8px; font-size: 25px; }
@@ -180,7 +180,7 @@ button.primary { background: #194a5e; border-color: var(--accent); }
   padding: 6px 10px; font-size: 11px; color: var(--muted);
 }
 #legend {
-  position: absolute; right: 10px; bottom: 10px; z-index: 5;
+  position: absolute; right: 10px; bottom: 22px; z-index: 5;
   background: rgba(15,19,27,.9); border: 1px solid var(--border); border-radius: 6px;
   padding: 6px 10px; font-size: 11px; max-height: 40%; overflow-y: auto;
 }
@@ -207,3 +207,4 @@ button.primary { background: #194a5e; border-color: var(--accent); }
 .nearby-item { padding: 5px 0; border-bottom: 1px solid var(--border); font-size: 12px; }
 .nearby-actor { color: var(--accent); font-weight: 600; }
 .nearby-details { color: var(--text); }
+.copyright { position: absolute; right: 6px; bottom: 3px; z-index: 5; font-size: 10px; color: var(--muted); opacity: .7; pointer-events: none; user-select: none; }

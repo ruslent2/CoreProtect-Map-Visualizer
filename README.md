@@ -1,4 +1,4 @@
-# CoreProtect Map Visualizer
+# GrieferFinder: Map Visualizer for CoreProtect
 
 Self-hosted веб-карта для адміністраторів Minecraft-серверів: показує події плагіна CoreProtect (хто, що і де зламав / поставив / забрав з контейнера / вбив) у вигляді кольорових точок і чанків поверх top-down проекції світу, з опціональною растровою підкладкою Bluemap.
 
@@ -147,3 +147,11 @@ npm run --prefix web test      # фронтенд-хелпери (Vitest)
 │  ├─ test/            — Vitest
 │  └─ dist/            — зібраний бандл (створюється `npm run build:web`)
 ```
+
+## License
+
+Proprietary. All rights reserved. See LICENSE.
+
+## Disclaimer
+
+GrieferFinder is an independent project and is not affiliated with or endorsed by CoreProtect, BlueMap, Mojang or Microsoft. CoreProtect and BlueMap are the property of their respective owners. Minecraft is a trademark of Mojang AB / Microsoft.

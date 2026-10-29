@@ -3,17 +3,18 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>CoreProtect Map Visualizer</title>
+  <title>GrieferFinder</title>
   <link rel="stylesheet" href="/src/style.css" />
 </head>
 <body>
   <section id="auth-screen" class="auth-screen">
     <div class="auth-card">
       <div class="auth-mark">CP</div>
-      <h1>CoreProtect Map Visualizer</h1>
+      <h1>GrieferFinder</h1>
       <p id="auth-message" data-i18n="auth.message"></p>
       <a class="discord-button" href="/api/auth/discord/start" data-i18n="auth.login"></a>
     </div>
+    <div class="copyright">© 2026 ruslent · GrieferFinder</div>
   </section>
   <div id="app" hidden>
     <header id="page-header">
@@ -32,6 +33,7 @@
         <div id="statusbar"></div>
         <div id="legend" hidden></div>
         <div id="world-hud"></div>
+        <div class="copyright">© 2026 ruslent · GrieferFinder</div>
       </main>
       <aside id="inspector"></aside>
     </div>

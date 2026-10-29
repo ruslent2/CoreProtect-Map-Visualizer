@@ -1,6 +1,9 @@
 {
   "name": "cpmv-web",
   "private": true,
+  "description": "Map visualizer for CoreProtect: see who broke, placed or took what, and where.",
+  "author": "ruslent",
+  "license": "UNLICENSED",
   "version": "0.1.0",
   "type": "module",
   "scripts": {
