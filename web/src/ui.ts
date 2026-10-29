@@ -486,7 +486,22 @@ export function buildLegend(root: HTMLElement, f: Filters, users: LegendUser[] |
     root.append(element);
   };
   root.replaceChildren();
-  note(t('legend.mainColor', { mode: modeLabel(f.mode) }), true);
+  // Клік по заголовку згортає легенду до одного рядка; стан зберігається між перебудовами.
+  const collapsed = loadLegendCollapsed();
+  const header = document.createElement('div');
+  header.className = 'legend-header tiny' + (collapsed ? ' collapsed' : '');
+  header.setAttribute('role', 'button');
+  header.tabIndex = 0;
+  header.setAttribute('aria-expanded', String(!collapsed));
+  header.title = t(collapsed ? 'legend.expand' : 'legend.collapse');
+  header.textContent = t('legend.mainColor', { mode: modeLabel(f.mode) });
+  const toggle = () => { saveLegendCollapsed(!collapsed); buildLegend(root, f, users); };
+  header.addEventListener('click', toggle);
+  header.addEventListener('keydown', event => {
+    if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); toggle(); }
+  });
+  root.append(header);
+  if (collapsed) return;
   if (f.mode === 'user') {
     if (!users.length) note(t('legend.noPlayers'));
     for (const u of users) {
@@ -514,10 +529,27 @@ export function buildLegend(root: HTMLElement, f: Filters, users: LegendUser[] |
       root.append(d);
     }
   } else if (f.mode === 'material') {
-    root.replaceChildren();
     note(t('legend.materialHash'));
   } else {
-    root.replaceChildren();
     note(t('legend.timeGradient'));
   }
+}
+
+const LEGEND_COLLAPSED_KEY = 'legendCollapsed';
+
+function loadLegendCollapsed() {
+  try {
+    return localStorage.getItem(LEGEND_COLLAPSED_KEY) === '1';
+  } catch {
+    return legendCollapsedFallback;
+  }
+}
+
+// Без localStorage стан живе до перезавантаження сторінки.
+let legendCollapsedFallback = false;
+function saveLegendCollapsed(collapsed: boolean) {
+  legendCollapsedFallback = collapsed;
+  try {
+    localStorage.setItem(LEGEND_COLLAPSED_KEY, collapsed ? '1' : '0');
+  } catch { /* недоступний localStorage: лишається змінна модуля */ }
 }

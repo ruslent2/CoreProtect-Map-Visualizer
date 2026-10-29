@@ -20,7 +20,7 @@
     "tileTemplate": "/api/bluemap/{world}/{zoom}/{x}/{z}.png",
     "tileSize": 500,
     "tileAspectRatio": 1,
-    "blocksPerTileAtZoom0": 501,
+    "blocksPerTileAtZoom0": 500,
     "lodFactor": 5,
     "maxZoom": 3
   },

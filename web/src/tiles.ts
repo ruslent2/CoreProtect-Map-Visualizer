@@ -3,7 +3,7 @@ import { Container, Sprite, Texture } from 'pixi.js';
 // Слой подложки Bluemap: generic XYZ-в-мировых-координатах тайловый слой.
 // Шаблон URL настраивается (разные версии Bluemap именуют тайлы по-разному):
 // {world} {zoom} {x} {z}. У BlueMap после обрезки верхней половины PNG
-// один тайл содержит 501×501 пикселей; масштаб каждого следующего уровня
+// один тайл содержит 501×501 пикселей на 500×500 блоков (край общий с соседом); масштаб каждого следующего уровня
 // увеличивает покрытие одного пикселя в 5 раз.
 export interface BluemapConfig {
   enabled: boolean;
@@ -81,7 +81,7 @@ export class BluemapLayer {
     if (viewKey === this.lastView) return;
     this.lastView = viewKey;
     const generation = this.generation;
-    // zoom=1: 501 блока на грань, zoom=2: 2505, zoom=3: 12525.
+    // zoom=1: 500 блоків на грань, zoom=2: 2500, zoom=3: 12500.
     const bpt = this.cfg.blocksPerTileAtZoom0 * Math.pow(this.cfg.lodFactor, z - 1);
     const tileHeightBlocks = bpt * this.cfg.tileAspectRatio;
     const tx1 = Math.floor(view.x1 / bpt), tx2 = Math.floor(view.x2 / bpt);
@@ -154,7 +154,11 @@ export class BluemapLayer {
       tex.source.scaleMode = 'nearest';
       const s = new Sprite(tex);
       s.position.set(tx * bpt, tz * tileHeightBlocks);
-      s.width = bpt; s.height = tileHeightBlocks;
+      // Тайл BlueMap має N+1 піксель на N блоків (крайній піксель спільний із сусіднім тайлом),
+      // тож розмір спрайта — це кількість пікселів × блоків на піксель, а не крок сітки тайлів.
+      const blocksPerPixel = Math.pow(this.cfg.lodFactor, z - 1);
+      s.width = source.width * blocksPerPixel;
+      s.height = source.height * blocksPerPixel;
       s.alpha = this.opacity;
       // Дрібніші тайли (менший zoom) лежать над грубішими, що ще не вивантажені.
       s.zIndex = -z;
@@ -175,12 +179,14 @@ export class BluemapLayer {
 
   private cropMapHalf(img: HTMLImageElement): HTMLCanvasElement {
     const cv = document.createElement('canvas');
-    cv.width = img.naturalWidth;
+    // Останній стовпець і рядок (501-й піксель) спільні із сусіднім тайлом: відкидаємо їх,
+    // щоб тайли не перекривались (при прозорості перекриття дає видимі шви).
+    cv.width = img.naturalWidth - 1;
     // Bluemap отдаёт вертикальный spritesheet: карта находится сверху,
     // нижняя половина содержит карту высот и в проект не попадает.
-    cv.height = Math.floor(img.naturalHeight / 2);
+    cv.height = Math.floor(img.naturalHeight / 2) - 1;
     const ctx = cv.getContext('2d', { willReadFrequently: true })!;
-    ctx.drawImage(img, 0, 0, img.naturalWidth, cv.height,
+    ctx.drawImage(img, 0, 0, cv.width, cv.height,
       0, 0, cv.width, cv.height);
     return cv;
   }

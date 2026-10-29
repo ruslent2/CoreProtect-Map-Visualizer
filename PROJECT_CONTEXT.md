@@ -114,7 +114,7 @@
 - Фронтенд использует `/api/bluemap/{world}/{zoom}/{x}/{z}.png`, а backend проксирует PNG, чтобы обойти CORS.
 - Формат LOD: `zoom=1` — 1 пиксель = 1 блок и `501×501` блоков на грань; `zoom=2` — 5 блоков на пиксель и `2505×2505`; `zoom=3` — 25 блоков на пиксель и `12525×12525`.
 - Исходный PNG имеет примерно `501×1002` пикселей. `BluemapLayer.cropMapHalf()` оставляет только верхнюю половину; нижняя карта высот отбрасывается. Цвета не изменяются.
-- В `config.json` и `config.example.json`: `tileSize: 500`, `tileAspectRatio: 1`, `blocksPerTileAtZoom0: 501`, `lodFactor: 5`, `maxZoom: 3`.
+- В `config.json` и `config.example.json`: `tileSize: 500`, `tileAspectRatio: 1`, `blocksPerTileAtZoom0: 500`, `lodFactor: 5`, `maxZoom: 3`.
 - `BluemapLayer` вызывает `setWorld(filters.world)`, кэширует загруженные и ожидающие тайлы, не повторяет запросы для неизменившегося viewport и отбрасывает устаревшие загрузки после смены zoom/мира.
 
 ### API ручного scan

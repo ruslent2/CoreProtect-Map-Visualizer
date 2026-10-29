@@ -185,6 +185,11 @@ button.primary { background: #194a5e; border-color: var(--accent); }
   padding: 6px 10px; font-size: 11px; max-height: 40%; overflow-y: auto;
 }
 #legend[hidden] { display: none; }
+#legend .legend-header { display: flex; align-items: center; gap: 6px; margin-bottom: 4px; cursor: pointer; user-select: none; }
+#legend .legend-header::before { content: '▾'; font-size: 10px; width: 10px; }
+#legend .legend-header.collapsed { margin-bottom: 0; }
+#legend .legend-header.collapsed::before { content: '▸'; }
+#legend .legend-header:hover, #legend .legend-header:focus { color: var(--text); outline: none; }
 #legend .li { display: flex; align-items: center; gap: 6px; margin: 2px 0; }
 #legend .sw { width: 10px; height: 10px; border-radius: 2px; flex: none; }
 #world-hud {

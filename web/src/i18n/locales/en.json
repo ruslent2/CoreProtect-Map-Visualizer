@@ -134,6 +134,8 @@
   },
   "legend": {
     "mainColor": "Primary color: {{mode}}",
+    "collapse": "Collapse legend",
+    "expand": "Expand legend",
     "noPlayers": "No players in the results",
     "unknownPlayer": "Unknown player",
     "materialHash": "color = material hash; brightness = recency",
