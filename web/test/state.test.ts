@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   calculateEffectiveTime,
   defaultFilters,
+  eventMatchesView,
   epochSecondsToLocalDateTime,
   hasMeaningfulFilters,
   isNonMeaningfulFilterValue,
@@ -13,6 +14,38 @@ import {
   sameYRange,
   yRangeContains,
 } from '../src/state';
+
+describe('rollback filter', () => {
+  const event = (y: number, rolled_back: number) => ({ y, rolled_back });
+
+  it('keeps every event when no local filter is set', () => {
+    const none = { y: null, rolledBack: null };
+    expect(eventMatchesView(event(64, 0), none)).toBe(true);
+    expect(eventMatchesView(event(64, 1), none)).toBe(true);
+  });
+
+  it('selects only rolled back or only untouched events', () => {
+    expect(eventMatchesView(event(64, 1), { y: null, rolledBack: true })).toBe(true);
+    expect(eventMatchesView(event(64, 0), { y: null, rolledBack: true })).toBe(false);
+    expect(eventMatchesView(event(64, 0), { y: null, rolledBack: false })).toBe(true);
+    expect(eventMatchesView(event(64, 1), { y: null, rolledBack: false })).toBe(false);
+  });
+
+  it('combines with the Y range', () => {
+    const filter = { y: { min: 60, max: 70 }, rolledBack: true };
+    expect(eventMatchesView(event(65, 1), filter)).toBe(true);
+    expect(eventMatchesView(event(75, 1), filter)).toBe(false);
+    expect(eventMatchesView(event(65, 0), filter)).toBe(false);
+  });
+
+  it('is sent to the server as rolledBack=1 or 0 and omitted for all', () => {
+    const query = (rolledBack: boolean | null) => new URLSearchParams(filtersToQuery({ ...defaultFilters(), rolledBack }));
+    expect(query(true).get('rolledBack')).toBe('1');
+    expect(query(false).get('rolledBack')).toBe('0');
+    expect(query(null).has('rolledBack')).toBe(false);
+    expect(hasMeaningfulFilters({ ...defaultFilters(), rolledBack: false })).toBe(true);
+  });
+});
 
 describe('Y range', () => {
   it('parses a single level and ranges in either order', () => {

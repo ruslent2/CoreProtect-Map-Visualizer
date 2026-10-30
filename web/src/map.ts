@@ -2,7 +2,7 @@ import { Application, Container, Sprite, Texture, Graphics } from 'pixi.js';
 import type { CpEvent, Chunk } from './api';
 import { eventColor, actionColor, uuidColor, type ColorContext } from './colors';
 import { coordinateToTile } from './tile-utils';
-import { yRangeContains, type YRange } from './state';
+import { eventMatchesView, NO_EVENT_VIEW_FILTER, type EventViewFilter } from './state';
 import { TiledRenderState, aggregateLodCells, createEventHitIndex, detailLodCells, MIN_LOD_MARKER_SCREEN_PX, shouldDisplayLodMarkers, tileKeyForBlock, tileOriginFromKey, tileRasterParts, DEFAULT_TILE_RENDERER_CONFIG, type AggregateTileState, type DetailTileState, type TileRendererConfig, type TileResource } from './tiled-renderer';
 
 const MIN_SCALE = 1 / 16; // 1 пиксель = 16 блоков; обзор чанков остаётся читаемым
@@ -48,8 +48,8 @@ export class MapView {
   private lastCamera = '';
   private lodScale = NaN;
   private lodMarkersVisible = true;
-  /** Локальний фільтр за Y: застосовується до вже завантажених подій, без запиту. */
-  private yFilter: YRange | null = null;
+  /** Локальні фільтри (Y, відкат): застосовуються до вже завантажених подій, без запиту. */
+  private viewFilter: EventViewFilter = NO_EVENT_VIEW_FILTER;
   private dragBtn = -1;
   private dragStart = { x: 0, y: 0, cx: 0, cz: 0 };
   private selStart: { x: number; z: number } | null = null;
@@ -97,8 +97,8 @@ export class MapView {
   beginDataGeneration(generation: number) {
     this.state.begin(generation);
     this.destroyStaged();
-    // Нове покоління завантажене сервером за фільтрами, тож локальний Y-фільтр скидається.
-    this.yFilter = null;
+    // Нове покоління завантажене сервером за фільтрами, тож локальні фільтри скидаються.
+    this.viewFilter = NO_EVENT_VIEW_FILTER;
 
     this.stagedLod = new Container();
     this.stagedAggregate = new Container();
@@ -143,7 +143,8 @@ export class MapView {
     lodLayer: Container,
   ): DetailTileState {
     const o = tileOriginFromKey(key, this.cfg.tileSize);
-    const shown = this.yFilter == null ? events : events.filter(e => yRangeContains(this.yFilter, e.y));
+    const filter = this.viewFilter;
+    const shown = filter === NO_EVENT_VIEW_FILTER ? events : events.filter(e => eventMatchesView(e, filter));
     const hit = createEventHitIndex(shown);
     const resources = this.raster(o.x1, o.z1, rasterLayer, (c, ox, oz) => {
       const g = c.getContext('2d')!;
@@ -247,13 +248,11 @@ export class MapView {
 
   /**
    * Redraws every committed tile from the data already in memory: a new colour
-   * context and, when `y` is given, a new local Y filter (null = all heights).
-   * Nothing is requested from the server.
+   * context and, for the given keys, new local event filters. Nothing is
+   * requested from the server.
    */
-  restyle(ctx: ColorContext, y?: YRange | null) {
-    if (y !== undefined) {
-      this.yFilter = y;
-    }
+  restyle(ctx: ColorContext, filter: Partial<EventViewFilter> = {}) {
+    this.viewFilter = { ...this.viewFilter, ...filter };
 
     // Нові ресурси додаються в ті самі контейнери, що й старі: беремо їх з батьків.
     const layers = (resources: TileResource[]) => ({

@@ -88,7 +88,7 @@ textarea.pattern-input:focus { outline: none; border-color: var(--accent); }
 }
 .help-tip:hover, .help-tip:focus { color: var(--accent); border-color: var(--accent); outline: none; }
 .help-tip-popup {
-  position: absolute; left: -8px; top: calc(100% + 6px); z-index: 30; display: none; width: 230px;
+  position: fixed; z-index: 60; display: none; width: 230px;
   padding: 7px 9px; background: var(--panel2); border: 1px solid var(--accent); border-radius: 6px;
   box-shadow: 0 6px 16px rgba(0,0,0,.45); color: var(--text);
   font-size: 11px; font-weight: 400; line-height: 1.4; text-align: left;
@@ -138,6 +138,13 @@ button.primary { background: #194a5e; border-color: var(--accent); }
 .chip .dot { width: 8px; height: 8px; border-radius: 2px; }
 .chip .x { cursor: pointer; color: var(--muted); margin-left: 2px; }
 .chip .x:hover { color: #ff6b6b; }
+/* Перемикач із трьох станів (наприклад, фільтр за відкатом). */
+.rollback-filter { margin-top: 6px; }
+.segmented { display: flex; margin-top: 3px; }
+.segmented button { flex: 1 1 auto; padding: 3px 6px; font-size: 11px; border-radius: 0; margin-left: -1px; }
+.segmented button:first-child { border-radius: 4px 0 0 4px; margin-left: 0; }
+.segmented button:last-child { border-radius: 0 4px 4px 0; }
+.segmented button.active { border-color: var(--accent); background: #194a5e; position: relative; z-index: 1; }
 .excl-toggle { font-size: 11px; padding: 2px 8px; }
 .excl-toggle.on { background: #5e2222; border-color: #a33; }
 

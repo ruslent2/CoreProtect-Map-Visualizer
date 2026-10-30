@@ -76,6 +76,20 @@ function helpHeading(title: string, help: string, helpTitle?: string) {
   }
   popup.append(help);
   tip.append(popup);
+  // Підказка фіксована відносно вікна: панель з overflow обрізала б абсолютну. Тримаємо її
+  // всередині панелі, лишаючи місце під смугою прокрутки.
+  const place = () => {
+    const panel = tip.closest<HTMLElement>('#filters')?.getBoundingClientRect();
+    const icon = tip.getBoundingClientRect();
+    const left = panel ? panel.left + 8 : 8;
+    const right = panel ? panel.right - 24 : window.innerWidth - 24;
+    const width = Math.min(260, right - left);
+    popup.style.width = `${width}px`;
+    popup.style.left = `${Math.max(left, Math.min(icon.left - 8, right - width))}px`;
+    popup.style.top = `${icon.bottom + 6}px`;
+  };
+  tip.addEventListener('mouseenter', place);
+  tip.addEventListener('focus', place);
   h.append(tip);
   return h;
 }
@@ -329,6 +343,7 @@ export function buildFilterPanel(
   }));
   const actExcl = makeExclToggle('actionsExcl', f, onChange, t('filters.excludeSelected'));
   root.append(makeCheckboxPicker(actionItems, f.actions, v => onChange({ actions: v }), actExcl));
+  root.append(makeRolledBackToggle(f.rolledBack, onChange));
 
   // --- Ділянка ---
   root.append(el(`<h3>${t('filters.area')}</h3>`));
@@ -359,6 +374,44 @@ function makeExclToggle(key: 'usersExcl' | 'actionsExcl' | 'materialsExcl', f: F
   b.textContent = (f[key] ? '☑ ' : '☐ ') + label;
   b.onclick = () => onChange({ [key]: !f[key] } as Partial<Filters>);
   return b;
+}
+
+// Три стани фільтра за відкатом: усі / лише відкочені / лише не відкочені.
+function makeRolledBackToggle(value: boolean | null, onChange: ChangeFn) {
+  const wrap = document.createElement('div');
+  wrap.className = 'rollback-filter';
+  const label = document.createElement('div');
+  label.className = 'tiny';
+  label.textContent = t('filters.rolledBack');
+  const group = document.createElement('div');
+  group.className = 'segmented';
+  group.setAttribute('role', 'group');
+  group.setAttribute('aria-label', t('filters.rolledBack'));
+  const options: [boolean | null, string][] = [
+    [null, t('filters.rolledBackAll')],
+    [true, t('filters.rolledBackOnly')],
+    [false, t('filters.rolledBackNone')],
+  ];
+  const buttons = options.map(([optionValue, text]) => {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.textContent = text;
+    button.classList.toggle('active', optionValue === value);
+    button.setAttribute('aria-pressed', String(optionValue === value));
+    button.onclick = () => {
+      // Зміна може застосуватися без перебудови панелі, тому стан кнопок оновлюємо одразу.
+      buttons.forEach((other, index) => {
+        const active = options[index][0] === optionValue;
+        other.classList.toggle('active', active);
+        other.setAttribute('aria-pressed', String(active));
+      });
+      onChange({ rolledBack: optionValue });
+    };
+    return button;
+  });
+  group.append(...buttons);
+  wrap.append(label, group);
+  return wrap;
 }
 
 interface PickItem { key: string; label: string; color?: string }

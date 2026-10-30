@@ -1,7 +1,7 @@
 import i18n, { t } from './i18n';
 import './style.css';
-import type { Filters, TimeSelection, BBox, YRange } from './state';
-import { calculateEffectiveTime, defaultFilters, sameYRange } from './state';
+import type { EventViewFilter, Filters, TimeSelection, BBox } from './state';
+import { calculateEffectiveTime, defaultFilters, NO_EVENT_VIEW_FILTER, sameYRange } from './state';
 import { MapView } from './map';
 import { BluemapLayer } from './tiles';
 import { XaeroOverlayLayer } from './xaero-overlay';
@@ -154,20 +154,27 @@ function markDirty() {
   else rebuild();
 }
 
-// Рівень Y можна змінювати локально, лише якщо завантажено події по всій висоті:
-// запит без Y і всі плитки вже мають точні події (немає агрегатів без деталізації).
-function canLiveY() {
-  const request = appliedRequest;
-  if (!request || request.filters.y != null) return false;
+// Фільтри за подією (Y, відкат) можна змінювати локально, лише якщо всі плитки вже мають
+// точні події (немає агрегатів без деталізації) і сервер не відсікав їх цим самим фільтром.
+function allEventsLoaded(request: AppliedRequest) {
   if (request.aggregateTileTotal == null) return true;
   return !!detailSession && detailSession.loadedCount >= request.aggregateTileTotal;
 }
+function canLiveY() {
+  const request = appliedRequest;
+  return !!request && request.filters.y == null && allEventsLoaded(request);
+}
+function canLiveRolledBack() {
+  const request = appliedRequest;
+  return !!request && request.filters.rolledBack == null && allEventsLoaded(request);
+}
 
-// Режим забарвлення, домішування й (за можливості) Y лише перемальовують завантажені дані.
+// Режим забарвлення, домішування й (за можливості) Y та відкат лише перемальовують завантажені дані.
 // Пауза дає користувачеві завершити введення, перш ніж перемальовувати карту.
 const VIEW_APPLY_DELAY_MS = 250;
 let viewTimer: number | null = null;
-let shownLiveY: YRange | null = null; // Y, застосований локально до завантажених даних
+// Фільтри, застосовані локально до завантажених даних.
+let shownLive: EventViewFilter = { ...NO_EVENT_VIEW_FILTER };
 function scheduleViewApply() {
   if (viewTimer != null) window.clearTimeout(viewTimer);
   viewTimer = window.setTimeout(applyView, VIEW_APPLY_DELAY_MS);
@@ -182,12 +189,17 @@ function applyView() {
   // Деталізація, що ще надходить, малюється за знімком запиту, тож оновлюємо й його.
   request.filters.mode = draftFilters.mode;
   request.filters.mix = draftFilters.mix;
-  const liveY = canLiveY();
-  map.restyle(colorContext(request.filters), liveY ? draftFilters.y : undefined);
-  if (liveY) shownLiveY = draftFilters.y;
+  const liveY = canLiveY(), liveRolledBack = canLiveRolledBack();
+  const live: Partial<EventViewFilter> = {};
+  if (liveY) live.y = draftFilters.y;
+  if (liveRolledBack) live.rolledBack = draftFilters.rolledBack;
+  map.restyle(colorContext(request.filters), live);
+  shownLive = { ...shownLive, ...live };
   buildLegend(legendEl, request.filters, resultUsers);
-  // Y змінився, але даних по всій висоті немає: потрібне «Оновити дані».
-  if (!liveY && !sameYRange(draftFilters.y, shownLiveY ?? request.filters.y)) markDirty();
+  // Фільтр змінився, але даних для локального застосування немає: потрібне «Оновити дані».
+  const yPending = !liveY && !sameYRange(draftFilters.y, shownLive.y ?? request.filters.y);
+  const rolledBackPending = !liveRolledBack && draftFilters.rolledBack !== (shownLive.rolledBack ?? request.filters.rolledBack);
+  if (yPending || rolledBackPending) markDirty();
 }
 
 function onFiltersChanged(patch: Partial<Filters>) {
@@ -198,7 +210,10 @@ function onFiltersChanged(patch: Partial<Filters>) {
     updateHud();
   }
   const keys = Object.keys(patch) as (keyof Filters)[];
-  const viewOnly = keys.length > 0 && keys.every(key => key === 'mode' || key === 'mix' || (key === 'y' && canLiveY()));
+  const viewOnly = keys.length > 0 && keys.every(key =>
+    key === 'mode' || key === 'mix'
+    || (key === 'y' && canLiveY())
+    || (key === 'rolledBack' && canLiveRolledBack()));
   if (viewOnly) {
     scheduleViewApply();
     return;
@@ -427,7 +442,7 @@ async function apply() {
   filters.tTo = effective.to;
   const localGeneration = scan.start();
   generation = localGeneration;
-  shownLiveY = null;
+  shownLive = { ...NO_EVENT_VIEW_FILTER };
   setLoading(true);
   stopped = false;
   dirty = scan.dirty;

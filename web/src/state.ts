@@ -58,6 +58,20 @@ export function yRangeContains(range: YRange | null, y: number): boolean {
   return range == null || (y >= range.min && y <= range.max);
 }
 
+/** Фільтри, які можна застосувати до вже завантажених подій без нового запиту. */
+export interface EventViewFilter {
+  y: YRange | null;
+  /** true — лише відкочені, false — лише не відкочені, null — усі. */
+  rolledBack: boolean | null;
+}
+
+export const NO_EVENT_VIEW_FILTER: EventViewFilter = { y: null, rolledBack: null };
+
+export function eventMatchesView(event: { y: number; rolled_back: number }, filter: EventViewFilter): boolean {
+  return yRangeContains(filter.y, event.y)
+    && (filter.rolledBack == null || (event.rolled_back !== 0) === filter.rolledBack);
+}
+
 export interface Filters {
   world: string;
   bbox: BBox | null;
@@ -67,6 +81,7 @@ export interface Filters {
   tFrom: number | null;
   tTo: number | null;
   y: YRange | null;
+  rolledBack: boolean | null;
   limit: number;
   mode: ColorMode;
   mix: number;
@@ -78,7 +93,7 @@ export function defaultFilters(defaultLimit = SAFE_DEFAULT_FILTER_LIMIT): Filter
     users: ['!#*'], usersExcl: false,
     actions: [], actionsExcl: false,
     materials: [], materialsExcl: false,
-    tFrom: null, tTo: null, y: null,
+    tFrom: null, tTo: null, y: null, rolledBack: null,
     limit: defaultLimit, mode: 'user', mix: 0.1,
   };
 }
@@ -98,6 +113,7 @@ export function isNonMeaningfulFilterValue(
 export function hasMeaningfulFilters(filters: Filters): boolean {
   return filters.bbox != null
     || filters.y != null
+    || filters.rolledBack != null
     || filters.users.some(value => !isNonMeaningfulFilterValue('users', value))
     || filters.materials.some(value => !isNonMeaningfulFilterValue('materials', value))
     || filters.actions.some(value => !isNonMeaningfulFilterValue('actions', value));
@@ -172,6 +188,7 @@ export function filtersToQuery(f: Filters, extra: Record<string, string> = {}): 
   if (f.materials.length) { p.set('materials', f.materials.join(',')); if (f.materialsExcl) p.set('materialsExcl', '1'); }
   if (f.tFrom != null) p.set('tFrom', String(f.tFrom));
   if (f.tTo != null) p.set('tTo', String(f.tTo));
+  if (f.rolledBack != null) p.set('rolledBack', f.rolledBack ? '1' : '0');
   if (f.y) { p.set('yMin', String(f.y.min)); p.set('yMax', String(f.y.max)); }
   p.set('limit', String(f.limit));
   for (const [k, v] of Object.entries(extra)) p.set(k, v);
