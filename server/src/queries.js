@@ -73,9 +73,11 @@ export function parseFilters(query) {
     }
   }
 
-  for (const key of ['actionsExcl', 'materialsExcl']) {
+  for (const key of ['actionsExcl', 'materialsExcl', 'rolledBack']) {
     if (q[key] != null && q[key] !== '') q[key] = asBoolean(q[key], key);
   }
+  // Порожній rolledBack = без фільтра за відкатом.
+  if (q.rolledBack === '') delete q.rolledBack;
 
   if (q.actions?.some(action => !Object.hasOwn(ACTIONS, action))) {
     throw bad('actions contains an unknown action');
@@ -304,6 +306,10 @@ function plans(store, q, snapshot) {
   if (q.yMax != null) {
     common.push('y<=@yMax');
     params.yMax = q.yMax;
+  }
+  if (q.rolledBack != null) {
+    // rolledBack=true — лише відкочені події, false — лише ті, що не відкочені.
+    common.push(q.rolledBack ? 'COALESCE(rolled_back,0)!=0' : 'COALESCE(rolled_back,0)=0');
   }
   if (q.tFrom != null) {
     common.push('time>=@tFrom');

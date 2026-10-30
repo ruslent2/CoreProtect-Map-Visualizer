@@ -68,12 +68,45 @@ app.get('/api/meta', async (_req, reply) => {
   }
 });
 
-app.get('/api/config', async () => ({
+// Локальна підкладка (напр. експорт Xaero): файл і прив'язка задаються в config.json → mapOverlay.
+// Якщо x/z не задані, беруться з імені файлу Xaero виду `..._x-512_z-512.png`.
+function resolveMapOverlay() {
+  const overlay = cfg.mapOverlay;
+  if (!overlay?.enabled || !overlay.file) return null;
+  const file = path.resolve(rootDir, overlay.file);
+  if (!fs.existsSync(file)) return null;
+  const match = /_x(-?\d+)_z(-?\d+)/.exec(path.basename(file));
+  const num = (value, fallback) => (typeof value === 'number' && Number.isFinite(value) ? value : fallback);
+  const scale = num(overlay.pxPerBlock, 1);
+  return {
+    file,
+    x: num(overlay.x, match ? Number(match[1]) : 0),
+    z: num(overlay.z, match ? Number(match[2]) : 0),
+    pxPerBlock: scale > 0 ? scale : 1,
+    version: fs.statSync(file).mtimeMs,
+  };
+}
+
+app.get('/api/config', async () => {
+  const overlay = resolveMapOverlay();
+  return {
   bluemap: cfg.bluemap ?? { enabled: false },
+  mapOverlay: overlay
+    ? { enabled: true, url: `/api/map-overlay?v=${Math.round(overlay.version)}`, x: overlay.x, z: overlay.z, pxPerBlock: overlay.pxPerBlock }
+    : { enabled: false },
   defaultLimit: cfg.defaultLimit,
   materialNamePrefixesToStrip: cfg.materialNamePrefixesToStrip,
   coreProtectTiles: cfg.coreProtectTiles,
-}));
+  };
+});
+
+app.get('/api/map-overlay', async (_req, reply) => {
+  const overlay = resolveMapOverlay();
+  if (!overlay) return reply.code(404).send({ error: 'map overlay disabled' });
+  reply.header('Content-Type', 'image/png');
+  reply.header('Cache-Control', 'public, max-age=300');
+  return reply.send(fs.createReadStream(overlay.file));
+});
 
 // Проксі BlueMap потрібен, оскільки зовнішній сервер не надсилає заголовок CORS.
 // PNG проходить через сервер без запису на диск і без зміни вихідних даних.

@@ -24,6 +24,11 @@
     "lodFactor": 5,
     "maxZoom": 3
   },
+  "mapOverlay": {
+    "enabled": false,
+    "file": ".temp/map/<xaero-export>_x-512_z-512.png",
+    "pxPerBlock": 1
+  },
   "defaultLimit": 50000,
   "materialNamePrefixesToStrip": ["minecraft:"],
   "syncIntervalMs": 30000,

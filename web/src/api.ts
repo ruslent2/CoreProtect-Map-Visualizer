@@ -50,6 +50,7 @@ export interface ApiConfig {
 	defaultLimit: number;
 	coreProtectTiles: CoreProtectTilesConfig;
 	bluemap: Record<string, unknown>;
+	mapOverlay?: { enabled: boolean; url?: string; x?: number; z?: number; pxPerBlock?: number };
 }
 
 export interface AuthUser {

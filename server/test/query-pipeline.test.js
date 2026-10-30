@@ -69,3 +69,19 @@ test('y filter accepts a single level, a range in either order, and open-ended b
     assert.deepEqual(await ys('yMin=70&yMax=70'),[70]);
   } finally { await app.close();s.close(); }
 });
+
+test('rolledBack filter selects rolled back or untouched events in queries and aggregates', async () => {
+  const s=store(); [[1,0],[2,1],[3,0],[4,1]].forEach(([x,rolled])=>s.db.prepare('INSERT INTO co_block(time,user,wid,x,y,z,type,action,rolled_back) VALUES(?,?,1,?,64,0,1,0,?)').run(100+x,1,x,rolled)); const app=await appFor(s);
+  const xs=async query=>(await app.inject(`/api/query?pageSize=20&${query}`)).json().events.map(event=>event.x).sort((a,b)=>a-b);
+  const total=async query=>(await app.inject(`/api/aggregate?${query}`)).json().total;
+  try {
+    assert.deepEqual(await xs(''),[1,2,3,4]);
+    assert.deepEqual(await xs('rolledBack=1'),[2,4]);
+    assert.deepEqual(await xs('rolledBack=true'),[2,4]);
+    assert.deepEqual(await xs('rolledBack=0'),[1,3]);
+    assert.deepEqual(await xs('rolledBack='),[1,2,3,4]);
+    assert.equal(await total('rolledBack=1'),2);
+    assert.equal(await total('rolledBack=0'),2);
+    assert.equal((await app.inject('/api/query?rolledBack=maybe')).statusCode,400);
+  } finally { await app.close();s.close(); }
+});

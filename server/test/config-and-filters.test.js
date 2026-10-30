@@ -52,6 +52,7 @@ test('buildApp exposes normalized tiled configuration', async () => {
     assert.equal(response.statusCode, 200);
     assert.deepEqual(response.json(), {
       bluemap: { enabled: false },
+      mapOverlay: { enabled: false },
       defaultLimit: 1,
       materialNamePrefixesToStrip: [],
       coreProtectTiles: { tileSize: 256, maxConcurrentRequests: 2, detailPageSize: 5000, maxTextureSize: 256 },

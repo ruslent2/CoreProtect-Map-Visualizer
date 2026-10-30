@@ -4,6 +4,7 @@ import type { Filters, TimeSelection, BBox, YRange } from './state';
 import { calculateEffectiveTime, defaultFilters, sameYRange } from './state';
 import { MapView } from './map';
 import { BluemapLayer } from './tiles';
+import { XaeroOverlayLayer } from './xaero-overlay';
 import { buildFilterPanel, buildLegend, type ScanControls } from './ui';
 import { enhanceSelect } from './dropdown';
 import { apiAggregate, apiAuthMe, apiBlacklist, apiBlockUser, apiConfig, apiEvent, apiLogout, apiMeta, apiQueryPage, apiQueryPlan, apiRefreshMeta, apiUnblockUser, type ApiConfig, type AuthUser, type CpEvent, type MetaData, type SourceSnapshot } from './api';
@@ -47,6 +48,7 @@ let resultBounds: BBox | null = null;
 let loading = false;
 let stopped = false;
 let bluemapOpacity = 0.9;
+let xaero: XaeroOverlayLayer;
 let lodMarkersVisible = true;
 let detailPriority: ((key: string) => void) | null = null;
 let detailSession: DetailQueueSession | null = null, detailRun: Promise<void> | null = null;
@@ -87,6 +89,7 @@ function controls(): ScanControls {
     onBluemapOpacity: alpha => {
       bluemapOpacity = alpha;
       bluemap?.setOpacity(alpha);
+      xaero?.setOpacity(alpha);
     },
     onLodMarkersVisible: enabled => {
       lodMarkersVisible = enabled;
@@ -760,6 +763,17 @@ async function bootMap() {
   map.world.addChildAt(bluemap.container, 0);
   bluemap.setOpacity(bluemapOpacity);
   bluemap.setWorld(draftFilters.world);
+  // Над BlueMap, але під даними CoreProtect (вони додаються в world пізніше).
+  xaero = new XaeroOverlayLayer();
+  map.world.addChildAt(xaero.container, 1);
+  xaero.setOpacity(bluemapOpacity);
+  const overlay = config.mapOverlay;
+  if (overlay?.enabled && overlay.url) {
+    xaero.setPlacement({ x: overlay.x, z: overlay.z, pxPerBlock: overlay.pxPerBlock });
+    fetch(overlay.url).then(r => r.ok ? r.blob() : Promise.reject(new Error(String(r.status))))
+      .then(blob => xaero.load(blob))
+      .catch(err => console.warn('Map overlay failed to load', err));
+  }
   // Камера вже повідомила про свій стан до створення шару, тож без цього тайли
   // з'являються лише після першої зміни масштабу.
   onCamera(map.cam.scale, map.cam.cx, map.cam.cz);
