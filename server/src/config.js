@@ -13,7 +13,7 @@ function clamp(value, min, max) {
 /** Видаляє налаштований префікс простору імен із відображуваної назви матеріалу або сутності. */
 export function stripMaterialNamePrefix(name, prefixes = []) {
   const value = String(name ?? '');
-  const match = prefixes.find(prefix => value.toLowerCase().startsWith(prefix));
+  const match = prefixes.find((prefix) => value.toLowerCase().startsWith(prefix));
   return match ? value.slice(match.length) : value;
 }
 
@@ -21,11 +21,13 @@ export function stripMaterialNamePrefix(name, prefixes = []) {
 export function normalizeConfig(config = {}) {
   const defaultLimit = clamp(toInteger(config.defaultLimit, 50000), 1, SERVER_LIMIT_MAX);
   const suppliedTiles = config.coreProtectTiles ?? {};
-  
+
   // Використовує лише явно задані префікси; некоректне значення не видаляє жодного префікса.
-  const materialNamePrefixesToStrip = (Array.isArray(config.materialNamePrefixesToStrip) ? config.materialNamePrefixesToStrip : [])
-    .filter(value => typeof value === 'string')
-    .map(value => value.trim().toLowerCase())
+  const materialNamePrefixesToStrip = (
+    Array.isArray(config.materialNamePrefixesToStrip) ? config.materialNamePrefixesToStrip : []
+  )
+    .filter((value) => typeof value === 'string')
+    .map((value) => value.trim().toLowerCase())
     .filter(Boolean);
   const rawTileSize = clamp(toInteger(suppliedTiles.tileSize, 256), 16, 2048);
 

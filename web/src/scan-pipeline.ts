@@ -79,8 +79,12 @@ export class DetailTileQueue {
     return true;
   }
 
-  get size(): number { return this.pending.length; }
-  get loadedCount(): number { return this.loaded.size; }
+  get size(): number {
+    return this.pending.length;
+  }
+  get loadedCount(): number {
+    return this.loaded.size;
+  }
 }
 
 /**
@@ -92,12 +96,24 @@ export class DetailQueueSession {
   private massStarted = false;
   private stopped = false;
 
-  constructor(readonly queue: DetailTileQueue, readonly workerCap: number, _pauseInitially = true) {}
+  constructor(
+    readonly queue: DetailTileQueue,
+    readonly workerCap: number,
+    _pauseInitially = true,
+  ) {}
 
-  get isPaused(): boolean { return !this.stopped && !this.massStarted && this.queue.size > 0; }
-  get isStopped(): boolean { return this.stopped; }
-  get hasStarted(): boolean { return this.massStarted; }
-  get loadedCount(): number { return this.queue.loadedCount; }
+  get isPaused(): boolean {
+    return !this.stopped && !this.massStarted && this.queue.size > 0;
+  }
+  get isStopped(): boolean {
+    return this.stopped;
+  }
+  get hasStarted(): boolean {
+    return this.massStarted;
+  }
+  get loadedCount(): number {
+    return this.queue.loadedCount;
+  }
 
   /** The sole gate that enables draining the remaining mass queue. */
   startMass(): boolean {

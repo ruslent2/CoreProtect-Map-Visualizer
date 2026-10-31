@@ -58,7 +58,8 @@ export function detailLodCells(events: Iterable<CpEvent>, cellSize = LOD_CELL_SI
 export function aggregateLodCells(chunks: Iterable<Chunk>): AggregateLodCell[] {
   const cells = new Map<string, AggregateLodCell>();
   for (const chunk of chunks) {
-    const x = chunk.cx * MINECRAFT_CHUNK_SIZE, z = chunk.cz * MINECRAFT_CHUNK_SIZE;
+    const x = chunk.cx * MINECRAFT_CHUNK_SIZE,
+      z = chunk.cz * MINECRAFT_CHUNK_SIZE;
     const key = `${x}:${z}`;
     const existing = cells.get(key);
     if (!existing || chunk.cnt >= existing.chunk.cnt) cells.set(key, { x, z, chunk });
@@ -84,7 +85,12 @@ export function tileRasterParts(tileSize: number, maxTextureSize: number): Raste
   const parts: RasterPart[] = [];
   for (let z = 0; z < tileSize; z += maxTextureSize) {
     for (let x = 0; x < tileSize; x += maxTextureSize) {
-      parts.push({ x, z, width: Math.min(maxTextureSize, tileSize - x), height: Math.min(maxTextureSize, tileSize - z) });
+      parts.push({
+        x,
+        z,
+        width: Math.min(maxTextureSize, tileSize - x),
+        height: Math.min(maxTextureSize, tileSize - z),
+      });
     }
   }
   return parts;
@@ -227,18 +233,19 @@ export class TiledRenderState {
   private remove<T extends { resources: TileResource[] }>(map: Map<string, T>, key: string): void {
     const old = map.get(key);
     if (!old) return;
-    old.resources.forEach(resource => resource.destroy());
+    old.resources.forEach((resource) => resource.destroy());
     map.delete(key);
   }
 
   private clearMap<T extends { resources: TileResource[] }>(map: Map<string, T>): void {
-    for (const state of map.values()) state.resources.forEach(resource => resource.destroy());
+    for (const state of map.values()) state.resources.forEach((resource) => resource.destroy());
   }
 }
 
 export function tileOriginFromKey(key: string, tileSize: number): { x1: number; z1: number; x2: number; z2: number } {
   const [xText, zText, ...rest] = key.split(':');
-  const x = Number(xText), z = Number(zText);
+  const x = Number(xText),
+    z = Number(zText);
   if (rest.length || !Number.isInteger(x) || !Number.isInteger(z)) throw new RangeError(`Invalid tile key: ${key}`);
   const tile: TileCoordinate = { x, z };
   const bounds = tileBounds(tile, tileSize);

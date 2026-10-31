@@ -41,8 +41,20 @@ describe('tile event and request helpers', () => {
   });
 
   it('sorts tiles deterministically by distance from the applied camera tile', () => {
-    expect(sortOccupiedTiles([{ x: 1, z: 0 }, { x: 0, z: 1 }, { x: 0, z: 0 }], { x: 0, z: 0 }))
-      .toEqual([{ x: 0, z: 0 }, { x: 0, z: 1 }, { x: 1, z: 0 }]);
+    expect(
+      sortOccupiedTiles(
+        [
+          { x: 1, z: 0 },
+          { x: 0, z: 1 },
+          { x: 0, z: 0 },
+        ],
+        { x: 0, z: 0 },
+      ),
+    ).toEqual([
+      { x: 0, z: 0 },
+      { x: 0, z: 1 },
+      { x: 1, z: 0 },
+    ]);
   });
 
   it('moves a priority request without duplicates', () => {

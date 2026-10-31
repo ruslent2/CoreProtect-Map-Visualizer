@@ -38,13 +38,17 @@ export class AuthStore {
   /** Записує одноразовий OAuth state. */
   createState(stateHash, verifier, expiresAt) {
     this.db.prepare('DELETE FROM oauth_states WHERE expires_at <= ?').run(Date.now());
-    this.db.prepare('INSERT INTO oauth_states (state_hash, verifier, expires_at) VALUES (?, ?, ?)').run(stateHash, verifier, expiresAt);
+    this.db
+      .prepare('INSERT INTO oauth_states (state_hash, verifier, expires_at) VALUES (?, ?, ?)')
+      .run(stateHash, verifier, expiresAt);
   }
 
   /** Атомарно споживає OAuth state. */
   consumeState(stateHash) {
     const transaction = this.db.transaction(() => {
-      const row = this.db.prepare('SELECT * FROM oauth_states WHERE state_hash = ? AND expires_at > ?').get(stateHash, Date.now());
+      const row = this.db
+        .prepare('SELECT * FROM oauth_states WHERE state_hash = ? AND expires_at > ?')
+        .get(stateHash, Date.now());
       if (row) this.db.prepare('DELETE FROM oauth_states WHERE state_hash = ?').run(stateHash);
       return row;
     });
@@ -52,9 +56,12 @@ export class AuthStore {
   }
 
   createSession(session) {
-    this.db.prepare(`INSERT INTO sessions
+    this.db
+      .prepare(
+        `INSERT INTO sessions
       (token_hash, discord_id, username, avatar, role, access_token, refresh_token, token_expires_at, roles_checked_at, expires_at)
-      VALUES (@tokenHash, @discordId, @username, @avatar, @role, @accessToken, @refreshToken, @tokenExpiresAt, @rolesCheckedAt, @expiresAt)`)
+      VALUES (@tokenHash, @discordId, @username, @avatar, @role, @accessToken, @refreshToken, @tokenExpiresAt, @rolesCheckedAt, @expiresAt)`,
+      )
       .run(session);
   }
 
@@ -63,21 +70,42 @@ export class AuthStore {
   }
 
   updateSession(tokenHash, values) {
-    this.db.prepare(`UPDATE sessions SET role = @role, access_token = @accessToken, refresh_token = @refreshToken,
-      token_expires_at = @tokenExpiresAt, roles_checked_at = @rolesCheckedAt WHERE token_hash = @tokenHash`)
+    this.db
+      .prepare(
+        `UPDATE sessions SET role = @role, access_token = @accessToken, refresh_token = @refreshToken,
+      token_expires_at = @tokenExpiresAt, roles_checked_at = @rolesCheckedAt WHERE token_hash = @tokenHash`,
+      )
       .run({ tokenHash, ...values });
   }
 
-  deleteSession(tokenHash) { this.db.prepare('DELETE FROM sessions WHERE token_hash = ?').run(tokenHash); }
-  revokeUser(discordId) { this.db.prepare('DELETE FROM sessions WHERE discord_id = ?').run(discordId); }
-  isBlocked(discordId) { return !!this.db.prepare('SELECT 1 FROM blacklist WHERE discord_id = ?').get(discordId); }
-  listBlacklist() { return this.db.prepare('SELECT discord_id AS discordId, added_by AS addedBy, created_at AS createdAt FROM blacklist ORDER BY created_at DESC').all(); }
+  deleteSession(tokenHash) {
+    this.db.prepare('DELETE FROM sessions WHERE token_hash = ?').run(tokenHash);
+  }
+  revokeUser(discordId) {
+    this.db.prepare('DELETE FROM sessions WHERE discord_id = ?').run(discordId);
+  }
+  isBlocked(discordId) {
+    return !!this.db.prepare('SELECT 1 FROM blacklist WHERE discord_id = ?').get(discordId);
+  }
+  listBlacklist() {
+    return this.db
+      .prepare(
+        'SELECT discord_id AS discordId, added_by AS addedBy, created_at AS createdAt FROM blacklist ORDER BY created_at DESC',
+      )
+      .all();
+  }
 
   block(discordId, addedBy) {
-    this.db.prepare('INSERT OR REPLACE INTO blacklist (discord_id, added_by, created_at) VALUES (?, ?, ?)').run(discordId, addedBy, Date.now());
+    this.db
+      .prepare('INSERT OR REPLACE INTO blacklist (discord_id, added_by, created_at) VALUES (?, ?, ?)')
+      .run(discordId, addedBy, Date.now());
     this.revokeUser(discordId);
   }
 
-  unblock(discordId) { return this.db.prepare('DELETE FROM blacklist WHERE discord_id = ?').run(discordId).changes > 0; }
-  close() { this.db.close(); }
+  unblock(discordId) {
+    return this.db.prepare('DELETE FROM blacklist WHERE discord_id = ?').run(discordId).changes > 0;
+  }
+  close() {
+    this.db.close();
+  }
 }

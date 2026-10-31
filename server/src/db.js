@@ -93,7 +93,11 @@ export class Store {
     log('SQLite підключено. Читання метаданих.');
     this.refreshMeta();
     this.status.ready = true;
-    log('База SQLite готова.', { worlds: this.meta.worlds.length, users: this.meta.users.length, materials: this.meta.materials.length });
+    log('База SQLite готова.', {
+      worlds: this.meta.worlds.length,
+      users: this.meta.users.length,
+      materials: this.meta.materials.length,
+    });
     return this.db;
   }
 
@@ -114,7 +118,7 @@ export class Store {
 
     // Світи
     const worldsRaw = db.prepare('SELECT id, world FROM co_world ORDER BY id').all();
-    const worlds = worldsRaw.map(r => ({ id: r.id, world: toStr(r.world) }));
+    const worlds = worldsRaw.map((r) => ({ id: r.id, world: toStr(r.world) }));
     const worldNameToId = new Map();
     const worldIdToName = new Map();
     for (const w of worlds) {
@@ -124,7 +128,7 @@ export class Store {
 
     // Користувачі
     const usersRaw = db.prepare('SELECT id, user, uuid FROM co_user ORDER BY user COLLATE NOCASE').all();
-    const users = usersRaw.map(r => ({
+    const users = usersRaw.map((r) => ({
       id: r.id,
       nick: toStr(r.user),
       uuid: toStr(r.uuid),
@@ -216,7 +220,9 @@ export class Store {
 
   close() {
     if (this.db) {
-      try { this.db.close(); } catch {}
+      try {
+        this.db.close();
+      } catch {}
       this.db = null;
       log('Базу SQLite закрито.');
     }

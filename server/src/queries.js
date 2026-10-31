@@ -29,7 +29,7 @@ const ACTIONS = {
   trade_receive: ['item', 12],
 };
 
-const bad = message => Object.assign(new Error(message), { statusCode: 400 });
+const bad = (message) => Object.assign(new Error(message), { statusCode: 400 });
 
 function asInteger(value, name) {
   if (Array.isArray(value)) {
@@ -55,11 +55,11 @@ function asBoolean(value, name) {
 // Нормалізує та обмежує списки, що надходять із query string.
 function asList(value, name) {
   const values = (Array.isArray(value) ? value : [value])
-    .flatMap(item => String(item).split(/[\n,]/))
-    .map(item => item.trim())
+    .flatMap((item) => String(item).split(/[\n,]/))
+    .map((item) => item.trim())
     .filter(Boolean);
   if (values.length > MAX_PATTERNS) throw bad(`${name} has too many values`);
-  if (values.some(item => item.length > MAX_PATTERN_LENGTH)) throw bad(`${name} value is too long`);
+  if (values.some((item) => item.length > MAX_PATTERN_LENGTH)) throw bad(`${name} value is too long`);
   return values;
 }
 
@@ -79,13 +79,27 @@ export function parseFilters(query) {
   // Порожній rolledBack = без фільтра за відкатом.
   if (q.rolledBack === '') delete q.rolledBack;
 
-  if (q.actions?.some(action => !Object.hasOwn(ACTIONS, action))) {
+  if (q.actions?.some((action) => !Object.hasOwn(ACTIONS, action))) {
     throw bad('actions contains an unknown action');
   }
 
   for (const key of [
-    'x1', 'x2', 'z1', 'z2', 'xMin', 'xMaxExclusive', 'zMin',
-    'zMaxExclusive', 'y', 'yMin', 'yMax', 'tFrom', 'tTo', 'limit', 'pageSize', 'tileSize',
+    'x1',
+    'x2',
+    'z1',
+    'z2',
+    'xMin',
+    'xMaxExclusive',
+    'zMin',
+    'zMaxExclusive',
+    'y',
+    'yMin',
+    'yMax',
+    'tFrom',
+    'tTo',
+    'limit',
+    'pageSize',
+    'tileSize',
   ]) {
     if (q[key] != null && q[key] !== '') {
       q[key] = asInteger(q[key], key);
@@ -116,12 +130,12 @@ export function parseFilters(query) {
   }
 
   const bounds = ['x1', 'x2', 'z1', 'z2'];
-  if (bounds.some(key => q[key] != null) && !bounds.every(key => q[key] != null)) {
+  if (bounds.some((key) => q[key] != null) && !bounds.every((key) => q[key] != null)) {
     throw bad('bounds require x1, x2, z1, and z2');
   }
 
   const tileBounds = ['xMin', 'xMaxExclusive', 'zMin', 'zMaxExclusive'];
-  if (tileBounds.some(key => q[key] != null) && !tileBounds.every(key => q[key] != null)) {
+  if (tileBounds.some((key) => q[key] != null) && !tileBounds.every((key) => q[key] != null)) {
     throw bad('tile bounds require xMin, xMaxExclusive, zMin, and zMaxExclusive');
   }
   if (q.xMin != null && (q.xMin >= q.xMaxExclusive || q.zMin >= q.zMaxExclusive)) {
@@ -144,14 +158,14 @@ export function parseFilters(query) {
 function glob(pattern, sensitive) {
   return new RegExp(
     `^${[...pattern]
-      .map(c => c === '*' ? '.*' : c === '?' ? '.' : c.replace(/[\\^$+.()|{}[\]]/g, '\\$&'))
+      .map((c) => (c === '*' ? '.*' : c === '?' ? '.' : c.replace(/[\\^$+.()|{}[\]]/g, '\\$&')))
       .join('')}$`,
     sensitive ? '' : 'i',
   );
 }
 
 function resolve(items, patterns, field) {
-  const rules = patterns.map(raw => {
+  const rules = patterns.map((raw) => {
     let pattern = raw;
     let include = true;
 
@@ -168,9 +182,9 @@ function resolve(items, patterns, field) {
     return { include, regex: glob(pattern, sensitive) };
   });
 
-  const hasInclude = rules.some(rule => rule.include);
+  const hasInclude = rules.some((rule) => rule.include);
   return items
-    .filter(item => {
+    .filter((item) => {
       let result = !hasInclude;
       for (const rule of rules) {
         if (rule.regex.test(item[field] ?? '')) {
@@ -179,17 +193,14 @@ function resolve(items, patterns, field) {
       }
       return result;
     })
-    .map(item => item.id);
+    .map((item) => item.id);
 }
 
 // Зберігає верхні межі rowid, щоб забезпечити сталий знімок результатів.
 export function getSourceSnapshot(store) {
   const db = store.getDb();
   return Object.fromEntries(
-    SOURCES.map(src => [
-      src,
-      Number(db.prepare(`SELECT COALESCE(MAX(rowid), 0) n FROM co_${src}`).get().n),
-    ]),
+    SOURCES.map((src) => [src, Number(db.prepare(`SELECT COALESCE(MAX(rowid), 0) n FROM co_${src}`).get().n)]),
   );
 }
 
@@ -218,7 +229,7 @@ export function parseSnapshot(value) {
     }
   }
 
-  return Object.fromEntries(SOURCES.map(source => [source, snapshot[source]]));
+  return Object.fromEntries(SOURCES.map((source) => [source, snapshot[source]]));
 }
 
 function pairs(map) {
@@ -228,15 +239,15 @@ function pairs(map) {
 // Формує плани SQL-запитів для усіх активних таблиць CoreProtect.
 function plans(store, q, snapshot) {
   const maps = store.getMaps();
-  let wid = q.world ? maps.worldNameToId.get(String(q.world).trim()) ?? null : null;
+  let wid = q.world ? (maps.worldNameToId.get(String(q.world).trim()) ?? null) : null;
 
   if (wid == null && store.meta?.worlds?.length) {
     wid = store.meta.worlds[0].id;
   }
 
   const active = new Set(SOURCES);
-  const include = Object.fromEntries(SOURCES.map(s => [s, new Set()]));
-  const exclude = Object.fromEntries(SOURCES.map(s => [s, new Set()]));
+  const include = Object.fromEntries(SOURCES.map((s) => [s, new Set()]));
+  const exclude = Object.fromEntries(SOURCES.map((s) => [s, new Set()]));
 
   if (q.actions?.length) {
     if (q.actionsExcl) {
@@ -323,7 +334,7 @@ function plans(store, q, snapshot) {
     common.push(`user IN (${userIds.join(',')})`);
   }
 
-  return [...active].flatMap(src => {
+  return [...active].flatMap((src) => {
     const where = [...common, `rowid<=${snapshot[src]}`];
     const actionIds = q.actionsExcl ? exclude[src] : include[src];
 
@@ -344,27 +355,25 @@ function plans(store, q, snapshot) {
 }
 
 function qualify(where, alias) {
-  return where.replace(
-    /(?<![.@])\b(user|wid|x|y|z|time|action|type|rowid)\b/g,
-    `${alias}.$1`,
-  );
+  return where.replace(/(?<![.@])\b(user|wid|x|y|z|time|action|type|rowid)\b/g, `${alias}.$1`);
 }
 
 function allParams(tablePlans) {
-  return Object.assign({}, ...tablePlans.map(plan => plan.params));
+  return Object.assign({}, ...tablePlans.map((plan) => plan.params));
 }
 
 function detailSelect(plan) {
   const a = plan.src === 'block' ? 'b' : plan.src === 'container' ? 'c' : 'i';
-  const material = plan.src === 'block'
-    ? 'CASE WHEN b.action=3 THEN CAST(e.entity AS TEXT) ELSE CAST(m.material AS TEXT) END'
-    : 'CAST(m.material AS TEXT)';
+  const material =
+    plan.src === 'block'
+      ? 'CASE WHEN b.action=3 THEN CAST(e.entity AS TEXT) ELSE CAST(m.material AS TEXT) END'
+      : 'CAST(m.material AS TEXT)';
 
   return `SELECT '${plan.src}' src,${RANK[plan.src]} source_rank,${a}.rowid rowid_src,${a}.time,CAST(u.user AS TEXT) nick,CAST(u.uuid AS TEXT) uuid,CAST(w.world AS TEXT) world,${a}.x,${a}.y,${a}.z,${material} material,${plan.src === 'block' ? 'NULL' : `${a}.amount`} amount,${a}.action,${a}.rolled_back FROM ${plan.table} ${a} LEFT JOIN co_user u ON u.id=${a}.user LEFT JOIN co_world w ON w.id=${a}.wid LEFT JOIN co_material_map m ON m.id=${a}.type ${plan.src === 'block' ? 'LEFT JOIN co_entity_map e ON e.id=b.type' : ''} WHERE ${qualify(plan.where, a)}`;
 }
 
 function normalize(rows, prefixes = []) {
-  return rows.map(row => {
+  return rows.map((row) => {
     row.nick = toStr(row.nick);
     row.uuid = toStr(row.uuid);
     row.world = toStr(row.world);
@@ -376,11 +385,13 @@ function normalize(rows, prefixes = []) {
 
 // Кодує порядок запису для курсорної пагінації.
 export function encodeCursor(row) {
-  return Buffer.from(JSON.stringify({
-    time: row.time,
-    sourceRank: RANK[row.src],
-    rowid: row.rowid_src,
-  })).toString('base64url');
+  return Buffer.from(
+    JSON.stringify({
+      time: row.time,
+      sourceRank: RANK[row.src],
+      rowid: row.rowid_src,
+    }),
+  ).toString('base64url');
 }
 
 export function parseCursor(value) {
@@ -398,7 +409,18 @@ export function parseCursor(value) {
     throw bad('cursor is malformed');
   }
 
-  if (!cursor || typeof cursor !== 'object' || Array.isArray(cursor) || Object.keys(cursor).length !== 3 || !Number.isSafeInteger(cursor.time) || !Number.isInteger(cursor.sourceRank) || cursor.sourceRank < 0 || cursor.sourceRank > 2 || !Number.isSafeInteger(cursor.rowid) || cursor.rowid < 1) {
+  if (
+    !cursor ||
+    typeof cursor !== 'object' ||
+    Array.isArray(cursor) ||
+    Object.keys(cursor).length !== 3 ||
+    !Number.isSafeInteger(cursor.time) ||
+    !Number.isInteger(cursor.sourceRank) ||
+    cursor.sourceRank < 0 ||
+    cursor.sourceRank > 2 ||
+    !Number.isSafeInteger(cursor.rowid) ||
+    cursor.rowid < 1
+  ) {
     throw bad('cursor is malformed');
   }
 
@@ -426,9 +448,12 @@ export function queryEvents(store, q, suppliedSnapshot = null, cursor = null, pa
   }
 
   const start = performance.now();
-  const fetched = store.getDb().prepare(
-    `SELECT * FROM (${tablePlans.map(detailSelect).join(' UNION ALL ')}) ${keyset} ORDER BY time DESC,source_rank ASC,rowid_src DESC LIMIT ${limit + 1}`,
-  ).all(params);
+  const fetched = store
+    .getDb()
+    .prepare(
+      `SELECT * FROM (${tablePlans.map(detailSelect).join(' UNION ALL ')}) ${keyset} ORDER BY time DESC,source_rank ASC,rowid_src DESC LIMIT ${limit + 1}`,
+    )
+    .all(params);
   const hasMore = fetched.length > limit;
 
   return {
@@ -461,10 +486,12 @@ export function bboxOf(rows) {
 }
 
 export function bboxOfChunks(chunks) {
-  return bboxOf(chunks.flatMap(chunk => [
-    { x: chunk.cx * 16, z: chunk.cz * 16 },
-    { x: chunk.cx * 16 + 15, z: chunk.cz * 16 + 15 },
-  ]));
+  return bboxOf(
+    chunks.flatMap((chunk) => [
+      { x: chunk.cx * 16, z: chunk.cz * 16 },
+      { x: chunk.cx * 16 + 15, z: chunk.cz * 16 + 15 },
+    ]),
+  );
 }
 
 // Визначає стратегію: повна вибірка або огляд із деталізацією.
@@ -491,37 +518,58 @@ export function aggregateChunks(store, q, suppliedSnapshot = null, tileSize = 25
 
   if (!tablePlans.length) {
     return {
-      chunks: [], occupiedTiles: [], players: [], total: 0,
-      temporal: null, elapsed: 0, elapsedMs: 0, snapshot,
+      chunks: [],
+      occupiedTiles: [],
+      players: [],
+      total: 0,
+      temporal: null,
+      elapsed: 0,
+      elapsedMs: 0,
+      snapshot,
     };
   }
 
   const params = { ...allParams(tablePlans), tileSize };
   const source = tablePlans
-    .map(plan => `SELECT '${plan.src}' src,${RANK[plan.src]} source_rank,user,action,x,z,time FROM ${plan.table} WHERE ${plan.where}`)
+    .map(
+      (plan) =>
+        `SELECT '${plan.src}' src,${RANK[plan.src]} source_rank,user,action,x,z,time FROM ${plan.table} WHERE ${plan.where}`,
+    )
     .join(' UNION ALL ');
   const db = store.getDb();
   const start = performance.now();
 
-  const chunks = db.prepare(`WITH events AS (${source}), totals AS (SELECT (x>>4) cx,(z>>4) cz,COUNT(*) cnt,COUNT(DISTINCT user) users,MIN(time) tmin,MAX(time) tmax FROM events GROUP BY cx,cz), ranked AS (SELECT cx,cz,user,src,action,COUNT(*) cnt,ROW_NUMBER() OVER (PARTITION BY cx,cz ORDER BY COUNT(*) DESC,source_rank ASC,user ASC,action ASC) rn FROM (SELECT (x>>4) cx,(z>>4) cz,user,src,source_rank,action FROM events) GROUP BY cx,cz,user,src,source_rank,action) SELECT totals.*,ranked.src,ranked.action,CAST(u.user AS TEXT) nick,CAST(u.uuid AS TEXT) uuid FROM totals LEFT JOIN ranked ON ranked.cx=totals.cx AND ranked.cz=totals.cz AND ranked.rn=1 LEFT JOIN co_user u ON u.id=ranked.user`)
+  const chunks = db
+    .prepare(
+      `WITH events AS (${source}), totals AS (SELECT (x>>4) cx,(z>>4) cz,COUNT(*) cnt,COUNT(DISTINCT user) users,MIN(time) tmin,MAX(time) tmax FROM events GROUP BY cx,cz), ranked AS (SELECT cx,cz,user,src,action,COUNT(*) cnt,ROW_NUMBER() OVER (PARTITION BY cx,cz ORDER BY COUNT(*) DESC,source_rank ASC,user ASC,action ASC) rn FROM (SELECT (x>>4) cx,(z>>4) cz,user,src,source_rank,action FROM events) GROUP BY cx,cz,user,src,source_rank,action) SELECT totals.*,ranked.src,ranked.action,CAST(u.user AS TEXT) nick,CAST(u.uuid AS TEXT) uuid FROM totals LEFT JOIN ranked ON ranked.cx=totals.cx AND ranked.cz=totals.cz AND ranked.rn=1 LEFT JOIN co_user u ON u.id=ranked.user`,
+    )
     .all(params)
-    .map(row => ({
+    .map((row) => ({
       cx: row.cx,
       cz: row.cz,
       cnt: row.cnt,
       users: row.users,
       tmin: row.tmin,
       tmax: row.tmax,
-      dominant: row.src
-        ? { src: row.src, action: row.action, nick: toStr(row.nick), uuid: toStr(row.uuid) }
-        : null,
+      dominant: row.src ? { src: row.src, action: row.action, nick: toStr(row.nick), uuid: toStr(row.uuid) } : null,
     }));
 
-  const occupiedTiles = db.prepare(`WITH events AS (${source}) SELECT CAST(FLOOR(x*1.0/@tileSize) AS INTEGER) tx,CAST(FLOOR(z*1.0/@tileSize) AS INTEGER) tz,COUNT(*) cnt,MIN(time) tmin,MAX(time) tmax FROM events GROUP BY tx,tz ORDER BY tz,tx`).all(params);
-  const players = db.prepare(`WITH events AS (${source}) SELECT CAST(u.user AS TEXT) nick,CAST(u.uuid AS TEXT) uuid FROM (SELECT DISTINCT user FROM events) filtered_users LEFT JOIN co_user u ON u.id=filtered_users.user ORDER BY nick COLLATE NOCASE`)
+  const occupiedTiles = db
+    .prepare(
+      `WITH events AS (${source}) SELECT CAST(FLOOR(x*1.0/@tileSize) AS INTEGER) tx,CAST(FLOOR(z*1.0/@tileSize) AS INTEGER) tz,COUNT(*) cnt,MIN(time) tmin,MAX(time) tmax FROM events GROUP BY tx,tz ORDER BY tz,tx`,
+    )
+    .all(params);
+  const players = db
+    .prepare(
+      `WITH events AS (${source}) SELECT CAST(u.user AS TEXT) nick,CAST(u.uuid AS TEXT) uuid FROM (SELECT DISTINCT user FROM events) filtered_users LEFT JOIN co_user u ON u.id=filtered_users.user ORDER BY nick COLLATE NOCASE`,
+    )
     .all(params)
-    .map(player => ({ nick: toStr(player.nick), uuid: toStr(player.uuid) }));
-  const summary = db.prepare(`WITH events AS (${source}) SELECT COUNT(*) total,MIN(time) tmin,MAX(time) tmax,COUNT(DISTINCT user) users FROM events`).get(params);
+    .map((player) => ({ nick: toStr(player.nick), uuid: toStr(player.uuid) }));
+  const summary = db
+    .prepare(
+      `WITH events AS (${source}) SELECT COUNT(*) total,MIN(time) tmin,MAX(time) tmax,COUNT(DISTINCT user) users FROM events`,
+    )
+    .get(params);
   const elapsed = Math.round(performance.now() - start);
 
   return {
@@ -529,9 +577,7 @@ export function aggregateChunks(store, q, suppliedSnapshot = null, tileSize = 25
     occupiedTiles,
     players,
     total: summary.total,
-    temporal: summary.total
-      ? { tmin: summary.tmin, tmax: summary.tmax, users: summary.users }
-      : null,
+    temporal: summary.total ? { tmin: summary.tmin, tmax: summary.tmax, users: summary.users } : null,
     elapsed,
     elapsedMs: elapsed,
     snapshot,
@@ -548,18 +594,26 @@ export function getEvent(store, src, rowid) {
   }
 
   const a = table === 'block' ? 'b' : table === 'container' ? 'c' : 'i';
-  const material = table === 'block'
-    ? 'CASE WHEN b.action=3 THEN CAST(e.entity AS TEXT) ELSE CAST(m.material AS TEXT) END'
-    : 'CAST(m.material AS TEXT)';
-  const row = store.getDb().prepare(`SELECT '${table}' src,${a}.rowid rowid_src,${a}.time,${a}.user user_id,CAST(u.user AS TEXT) nick,CAST(u.uuid AS TEXT) uuid,CAST(w.world AS TEXT) world,${a}.wid,${a}.x,${a}.y,${a}.z,${material} material,${table === 'block' ? 'NULL' : `${a}.amount`} amount,${a}.action,${a}.rolled_back FROM co_${table} ${a} LEFT JOIN co_user u ON u.id=${a}.user LEFT JOIN co_world w ON w.id=${a}.wid LEFT JOIN co_material_map m ON m.id=${a}.type ${table === 'block' ? 'LEFT JOIN co_entity_map e ON e.id=b.type' : ''} WHERE ${a}.rowid=?`).get(rid);
+  const material =
+    table === 'block'
+      ? 'CASE WHEN b.action=3 THEN CAST(e.entity AS TEXT) ELSE CAST(m.material AS TEXT) END'
+      : 'CAST(m.material AS TEXT)';
+  const row = store
+    .getDb()
+    .prepare(
+      `SELECT '${table}' src,${a}.rowid rowid_src,${a}.time,${a}.user user_id,CAST(u.user AS TEXT) nick,CAST(u.uuid AS TEXT) uuid,CAST(w.world AS TEXT) world,${a}.wid,${a}.x,${a}.y,${a}.z,${material} material,${table === 'block' ? 'NULL' : `${a}.amount`} amount,${a}.action,${a}.rolled_back FROM co_${table} ${a} LEFT JOIN co_user u ON u.id=${a}.user LEFT JOIN co_world w ON w.id=${a}.wid LEFT JOIN co_material_map m ON m.id=${a}.type ${table === 'block' ? 'LEFT JOIN co_entity_map e ON e.id=b.type' : ''} WHERE ${a}.rowid=?`,
+    )
+    .get(rid);
 
-  return row ? {
-    ...row,
-    nick: toStr(row.nick),
-    uuid: toStr(row.uuid),
-    world: toStr(row.world),
-    material: stripMaterialNamePrefix(toStr(row.material), store.cfg.materialNamePrefixesToStrip),
-  } : null;
+  return row
+    ? {
+        ...row,
+        nick: toStr(row.nick),
+        uuid: toStr(row.uuid),
+        world: toStr(row.world),
+        material: stripMaterialNamePrefix(toStr(row.material), store.cfg.materialNamePrefixesToStrip),
+      }
+    : null;
 }
 
 // Recent local activity from every player helps trace item transfers and interactions.
@@ -577,18 +631,21 @@ export function nearbyEvents(store, event, radius = 16) {
     tFrom: event.time - 3600,
     tTo: event.time + 3600,
   };
-  const parts = SOURCES.map(src => {
+  const parts = SOURCES.map((src) => {
     const a = src === 'block' ? 'b' : src === 'container' ? 'c' : 'i';
-    const material = src === 'block'
-      ? 'CASE WHEN b.action=3 THEN CAST(e.entity AS TEXT) ELSE CAST(m.material AS TEXT) END'
-      : 'CAST(m.material AS TEXT)';
+    const material =
+      src === 'block'
+        ? 'CASE WHEN b.action=3 THEN CAST(e.entity AS TEXT) ELSE CAST(m.material AS TEXT) END'
+        : 'CAST(m.material AS TEXT)';
 
     return `SELECT '${src}' src,${a}.rowid rowid_src,${a}.time,CAST(u.user AS TEXT) nick,${material} material,${a}.action,${a}.x,${a}.y,${a}.z FROM co_${src} ${a} LEFT JOIN co_user u ON u.id=${a}.user LEFT JOIN co_material_map m ON m.id=${a}.type ${src === 'block' ? 'LEFT JOIN co_entity_map e ON e.id=b.type' : ''} WHERE ${a}.wid=@wid AND ${a}.x BETWEEN @x1 AND @x2 AND ${a}.z BETWEEN @z1 AND @z2 AND ${a}.time BETWEEN @tFrom AND @tTo`;
   });
 
-  return store.getDb().prepare(`SELECT * FROM (${parts.join(' UNION ALL ')}) ORDER BY time DESC,rowid_src DESC LIMIT 50`)
+  return store
+    .getDb()
+    .prepare(`SELECT * FROM (${parts.join(' UNION ALL ')}) ORDER BY time DESC,rowid_src DESC LIMIT 50`)
     .all(p)
-    .map(row => ({
+    .map((row) => ({
       ...row,
       nick: toStr(row.nick),
       material: stripMaterialNamePrefix(toStr(row.material), store.cfg.materialNamePrefixesToStrip),

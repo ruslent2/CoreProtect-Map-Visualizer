@@ -36,12 +36,17 @@ export class XaeroOverlayLayer {
   private opacity = 0.9;
   private loadId = 0;
 
-  get hasImage() { return this.bitmap != null; }
+  get hasImage() {
+    return this.bitmap != null;
+  }
 
   async load(file: Blob): Promise<{ width: number; height: number }> {
     const id = ++this.loadId;
     const bitmap = await createImageBitmap(file);
-    if (id !== this.loadId) { bitmap.close(); throw new Error('superseded'); }
+    if (id !== this.loadId) {
+      bitmap.close();
+      throw new Error('superseded');
+    }
     this.bitmap?.close();
     this.bitmap = bitmap;
     this.rebuild();

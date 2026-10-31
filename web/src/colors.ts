@@ -9,16 +9,32 @@ import i18n, { t } from './i18n';
 export type ColorMode = 'user' | 'action' | 'material' | 'time';
 
 export interface EventLike {
-  nick: string | null; uuid: string | null;
-  src: string; action: number;
-  material: string | null; time: number;
+  nick: string | null;
+  uuid: string | null;
+  src: string;
+  action: number;
+  material: string | null;
+  time: number;
 }
 
 export const ACTION_CODES = [
-  'block:0', 'block:1', 'block:2', 'block:3',
-  'container:0', 'container:1',
-  'item:2', 'item:3', 'item:4', 'item:5', 'item:6', 'item:7', 'item:8',
-  'item:9', 'item:10', 'item:11', 'item:12',
+  'block:0',
+  'block:1',
+  'block:2',
+  'block:3',
+  'container:0',
+  'container:1',
+  'item:2',
+  'item:3',
+  'item:4',
+  'item:5',
+  'item:6',
+  'item:7',
+  'item:8',
+  'item:9',
+  'item:10',
+  'item:11',
+  'item:12',
 ];
 
 /** Локалізована назва дії за кодом джерела та дії. */
@@ -53,10 +69,10 @@ function uuidHashCode(uuid: string): number | null {
 function offlinePlayerUuidHashCode(username: string): number {
   const input = new TextEncoder().encode(`OfflinePlayer:${username}`);
   const digest = SparkMD5.ArrayBuffer.hash(input.buffer, true);
-  const bytes = Uint8Array.from(digest, char => char.charCodeAt(0));
+  const bytes = Uint8Array.from(digest, (char) => char.charCodeAt(0));
   bytes[6] = (bytes[6] & 0x0f) | 0x30;
   bytes[8] = (bytes[8] & 0x3f) | 0x80;
-  const hex = Array.from(bytes, byte => byte.toString(16).padStart(2, '0')).join('');
+  const hex = Array.from(bytes, (byte) => byte.toString(16).padStart(2, '0')).join('');
   return uuidHashCode(hex)!;
 }
 
@@ -65,7 +81,7 @@ function normalizeBrightness90(rgb: [number, number, number]): [number, number, 
   const max = Math.max(...rgb);
   if (max === 0) return [230, 230, 230];
   const scale = (0.9 * 255) / max;
-  return rgb.map(channel => Math.round(channel * scale)) as [number, number, number];
+  return rgb.map((channel) => Math.round(channel * scale)) as [number, number, number];
 }
 
 // UUID → колір маркера; за відсутності UUID генерується серверний offline UUID з ніку.
@@ -75,28 +91,30 @@ export function uuidColor(uuid: string | null, nick: string | null): [number, nu
   return normalizeBrightness90(rgbHexNum(hash ?? offlineHash));
 }
 
-const ACTION_COLORS: Record<string, [number, number, number]> = Object.fromEntries([
-  ['block:0', 0xE53935], // руйнування — червоний
-  ['block:1', 0x43A047], // встановлення — зелений
-  ['block:2', 0xFDD835], // взаємодія — жовтий
-  ['block:3', 0xD81B60], // вбивство сутності — рожево-червоний
-  ['container:0', 0x1E88E5], // вилучення — синій
-  ['container:1', 0x00ACC1], // поміщення — блакитний
-  ['item:2', 0x8E24AA], // викидання
-  ['item:3', 0x5E35B1], // підбирання
-  ['item:4', 0x1976D2], // вилучення з ендер-скрині
-  ['item:5', 0x00897B], // поміщення до ендер-скрині
-  ['item:6', 0x3949AB], // кидання
-  ['item:7', 0x6D4C41], // постріл
-  ['item:8', 0xE53935], // поломка
-  ['item:9', 0xF9A825], // покладено для крафту
-  ['item:10', 0x7CB342], // забрано з крафту
-  ['item:11', 0xFB8C00], // віддано в торгівлі
-  ['item:12', 0x43A047], // отримано в торгівлі
-].map(([k, v]) => [k, rgbHexNum(v as number)]));
+const ACTION_COLORS: Record<string, [number, number, number]> = Object.fromEntries(
+  [
+    ['block:0', 0xe53935], // руйнування — червоний
+    ['block:1', 0x43a047], // встановлення — зелений
+    ['block:2', 0xfdd835], // взаємодія — жовтий
+    ['block:3', 0xd81b60], // вбивство сутності — рожево-червоний
+    ['container:0', 0x1e88e5], // вилучення — синій
+    ['container:1', 0x00acc1], // поміщення — блакитний
+    ['item:2', 0x8e24aa], // викидання
+    ['item:3', 0x5e35b1], // підбирання
+    ['item:4', 0x1976d2], // вилучення з ендер-скрині
+    ['item:5', 0x00897b], // поміщення до ендер-скрині
+    ['item:6', 0x3949ab], // кидання
+    ['item:7', 0x6d4c41], // постріл
+    ['item:8', 0xe53935], // поломка
+    ['item:9', 0xf9a825], // покладено для крафту
+    ['item:10', 0x7cb342], // забрано з крафту
+    ['item:11', 0xfb8c00], // віддано в торгівлі
+    ['item:12', 0x43a047], // отримано в торгівлі
+  ].map(([k, v]) => [k, rgbHexNum(v as number)]),
+);
 
 export function actionColor(src: string, action: number): [number, number, number] {
-  return ACTION_COLORS[`${src}:${action}`] ?? [0x9E9E9E];
+  return ACTION_COLORS[`${src}:${action}`] ?? [0x9e9e9e];
 }
 
 export function materialColor(material: string | null): [number, number, number] {
@@ -114,9 +132,13 @@ export function timeColor(t: number, tMin: number, tMax: number): [number, numbe
 
 // --- Утиліти HSL ---
 export function rgbToHsl(r: number, g: number, b: number): [number, number, number] {
-  r /= 255; g /= 255; b /= 255;
-  const max = Math.max(r, g, b), min = Math.min(r, g, b);
-  let h = 0; const l = (max + min) / 2;
+  r /= 255;
+  g /= 255;
+  b /= 255;
+  const max = Math.max(r, g, b),
+    min = Math.min(r, g, b);
+  let h = 0;
+  const l = (max + min) / 2;
   const d = max - min;
   const s = d === 0 ? 0 : d / (1 - Math.abs(2 * l - 1));
   if (d !== 0) {
@@ -133,7 +155,9 @@ export function hslToRgb(h: number, s: number, l: number): [number, number, numb
   const c = (1 - Math.abs(2 * l - 1)) * s;
   const x = c * (1 - Math.abs(((h / 60) % 2) - 1));
   const m = l - c / 2;
-  let r = 0, g = 0, b = 0;
+  let r = 0,
+    g = 0,
+    b = 0;
   if (h < 60) [r, g, b] = [c, x, 0];
   else if (h < 120) [r, g, b] = [x, c, 0];
   else if (h < 180) [r, g, b] = [0, c, x];
@@ -150,23 +174,35 @@ function hueMix(h1: number, h2: number, k: number): number {
 
 export interface ColorContext {
   mode: ColorMode;
-  mix: number;          // 0..0.5 — частка домішування вторинного виміру
-  tMin: number; tMax: number;
+  mix: number; // 0..0.5 — частка домішування вторинного виміру
+  tMin: number;
+  tMax: number;
 }
 
 // Повний розрахунок кольору події за пріоритетами режиму.
 // Основний колір — режим; вторинний — домішування відтінком; час — яскравістю
 // (крім режиму time, де основним є час, а вторинною — дія).
 export function eventColor(e: EventLike, ctx: ColorContext): [number, number, number] {
-  const secColor = ctx.mode === 'time'
-    ? actionColor(e.src, e.action)
-    : (ctx.mode === 'user' ? actionColor(e.src, e.action) : uuidColor(e.uuid, e.nick));
+  const secColor =
+    ctx.mode === 'time'
+      ? actionColor(e.src, e.action)
+      : ctx.mode === 'user'
+        ? actionColor(e.src, e.action)
+        : uuidColor(e.uuid, e.nick);
   let primary: [number, number, number];
   switch (ctx.mode) {
-    case 'user': primary = uuidColor(e.uuid, e.nick); break;
-    case 'action': primary = actionColor(e.src, e.action); break;
-    case 'material': primary = materialColor(e.material); break;
-    case 'time': primary = timeColor(e.time, ctx.tMin, ctx.tMax); break;
+    case 'user':
+      primary = uuidColor(e.uuid, e.nick);
+      break;
+    case 'action':
+      primary = actionColor(e.src, e.action);
+      break;
+    case 'material':
+      primary = materialColor(e.material);
+      break;
+    case 'time':
+      primary = timeColor(e.time, ctx.tMin, ctx.tMax);
+      break;
   }
   const [ph, ps, pl] = rgbToHsl(...primary);
   const [sh] = rgbToHsl(...secColor);

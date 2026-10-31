@@ -3,7 +3,22 @@ import type { CpEvent, Chunk } from './api';
 import { eventColor, actionColor, uuidColor, type ColorContext } from './colors';
 import { coordinateToTile } from './tile-utils';
 import { eventMatchesView, NO_EVENT_VIEW_FILTER, type EventViewFilter } from './state';
-import { TiledRenderState, aggregateLodCells, createEventHitIndex, detailLodCells, MIN_LOD_MARKER_SCREEN_PX, shouldDisplayLodMarkers, tileKeyForBlock, tileOriginFromKey, tileRasterParts, DEFAULT_TILE_RENDERER_CONFIG, type AggregateTileState, type DetailTileState, type TileRendererConfig, type TileResource } from './tiled-renderer';
+import {
+  TiledRenderState,
+  aggregateLodCells,
+  createEventHitIndex,
+  detailLodCells,
+  MIN_LOD_MARKER_SCREEN_PX,
+  shouldDisplayLodMarkers,
+  tileKeyForBlock,
+  tileOriginFromKey,
+  tileRasterParts,
+  DEFAULT_TILE_RENDERER_CONFIG,
+  type AggregateTileState,
+  type DetailTileState,
+  type TileRendererConfig,
+  type TileResource,
+} from './tiled-renderer';
 
 const MIN_SCALE = 1 / 16; // 1 пиксель = 16 блоков; обзор чанков остаётся читаемым
 const MAX_SCALE = 64;
@@ -55,11 +70,7 @@ export class MapView {
   private selStart: { x: number; z: number } | null = null;
   private hoverKey = '';
 
-  constructor(
-    container: HTMLElement,
-    cb: MapCallbacks,
-    config: Partial<TileRendererConfig> = {},
-  ) {
+  constructor(container: HTMLElement, cb: MapCallbacks, config: Partial<TileRendererConfig> = {}) {
     this.cb = cb;
     this.cfg = { ...DEFAULT_TILE_RENDERER_CONFIG, ...config };
 
@@ -80,13 +91,7 @@ export class MapView {
         this.app.stage.addChild(this.world);
 
         // The selection uses block coordinates, so it shares the camera transform.
-        this.world.addChild(
-          this.tileLayer,
-          this.lodLayer,
-          this.aggregateLayer,
-          this.detailLayer,
-          this.selGraphics,
-        );
+        this.world.addChild(this.tileLayer, this.lodLayer, this.aggregateLayer, this.detailLayer, this.selGraphics);
 
         this.bindInput(container);
         this.app.ticker.add(() => this.updateTransform());
@@ -114,12 +119,7 @@ export class MapView {
   }
 
   /** Rasterize an event tile and its low-detail marker overlay into staging. */
-  setEventTile(
-    generation: number,
-    key: string,
-    events: CpEvent[],
-    ctx: ColorContext,
-  ): boolean {
+  setEventTile(generation: number, key: string, events: CpEvent[], ctx: ColorContext): boolean {
     if (!this.state.canMutate(generation) || !this.stagedDetail || !this.stagedLod) {
       return false;
     }
@@ -128,7 +128,7 @@ export class MapView {
     const staged = this.state.stageDetail(generation, key, tile);
 
     if (!staged) {
-      tile.resources.forEach(resource => resource.destroy());
+      tile.resources.forEach((resource) => resource.destroy());
     }
 
     return staged;
@@ -144,7 +144,7 @@ export class MapView {
   ): DetailTileState {
     const o = tileOriginFromKey(key, this.cfg.tileSize);
     const filter = this.viewFilter;
-    const shown = filter === NO_EVENT_VIEW_FILTER ? events : events.filter(e => eventMatchesView(e, filter));
+    const shown = filter === NO_EVENT_VIEW_FILTER ? events : events.filter((e) => eventMatchesView(e, filter));
     const hit = createEventHitIndex(shown);
     const resources = this.raster(o.x1, o.z1, rasterLayer, (c, ox, oz) => {
       const g = c.getContext('2d')!;
@@ -176,12 +176,7 @@ export class MapView {
   }
 
   /** Rasterize aggregate chunks and their low-detail markers into staging. */
-  setAggregateTile(
-    generation: number,
-    key: string,
-    chunks: Chunk[],
-    ctx: ColorContext,
-  ): boolean {
+  setAggregateTile(generation: number, key: string, chunks: Chunk[], ctx: ColorContext): boolean {
     if (!this.state.canMutate(generation) || !this.stagedAggregate || !this.stagedLod) {
       return false;
     }
@@ -190,7 +185,7 @@ export class MapView {
     const staged = this.state.stageAggregate(generation, key, tile);
 
     if (!staged) {
-      tile.resources.forEach(resource => resource.destroy());
+      tile.resources.forEach((resource) => resource.destroy());
     }
 
     return staged;
@@ -204,7 +199,7 @@ export class MapView {
     lodLayer: Container,
   ): AggregateTileState {
     const o = tileOriginFromKey(key, this.cfg.tileSize);
-    const max = Math.max(1, ...chunks.map(c => c.cnt));
+    const max = Math.max(1, ...chunks.map((c) => c.cnt));
     const resources = this.raster(o.x1, o.z1, rasterLayer, (canvas, ox, oz) => {
       const g = canvas.getContext('2d')!;
 
@@ -227,17 +222,12 @@ export class MapView {
   }
 
   /** Immediately install a detailed event tile over its aggregate counterpart. */
-  installEventTile(
-    generation: number,
-    key: string,
-    events: CpEvent[],
-    ctx: ColorContext,
-  ): boolean {
+  installEventTile(generation: number, key: string, events: CpEvent[], ctx: ColorContext): boolean {
     const tile = this.buildEventTile(key, events, ctx, this.detailLayer, this.lodLayer);
     const installed = this.state.installDetail(generation, key, tile);
 
     if (!installed) {
-      tile.resources.forEach(resource => resource.destroy());
+      tile.resources.forEach((resource) => resource.destroy());
     } else {
       this.setAggregateTileVisible(key, false);
       this.updateLodGraphics();
@@ -262,7 +252,9 @@ export class MapView {
     // Агрегатна плитка, перекрита детальною, лишається прихованою.
     const keepVisibility = (from: TileResource[], to: TileResource[]) => {
       const visible = (from[0] as PixiResource | undefined)?.displayObject.visible ?? true;
-      to.forEach(resource => { (resource as PixiResource).displayObject.visible = visible; });
+      to.forEach((resource) => {
+        (resource as PixiResource).displayObject.visible = visible;
+      });
     };
 
     for (const [key, tile] of [...this.state.detailTiles]) {
@@ -338,9 +330,9 @@ export class MapView {
   /** Dispose every tile and reset transient pointer state. */
   clearData() {
     this.state.clear();
-    this.lodLayer.removeChildren().forEach(c => this.destroyContainer(c as Container));
-    this.aggregateLayer.removeChildren().forEach(c => this.destroyContainer(c as Container));
-    this.detailLayer.removeChildren().forEach(c => this.destroyContainer(c as Container));
+    this.lodLayer.removeChildren().forEach((c) => this.destroyContainer(c as Container));
+    this.aggregateLayer.removeChildren().forEach((c) => this.destroyContainer(c as Container));
+    this.detailLayer.removeChildren().forEach((c) => this.destroyContainer(c as Container));
     this.destroyStaged();
     this.hoverKey = '';
   }
@@ -410,7 +402,7 @@ export class MapView {
     layer: Container,
     draw: (canvas: HTMLCanvasElement, ox: number, oz: number) => void,
   ): PixiResource[] {
-    return tileRasterParts(this.cfg.tileSize, this.cfg.maxTextureSize).map(p => {
+    return tileRasterParts(this.cfg.tileSize, this.cfg.maxTextureSize).map((p) => {
       const c = document.createElement('canvas');
       c.width = p.width;
       c.height = p.height;
@@ -440,31 +432,16 @@ export class MapView {
   }
 
   /** Derive the dominant chunk color and brighten it by its relative count. */
-  private aggregateColor(
-    chunk: Chunk,
-    ctx: ColorContext,
-    max: number,
-  ): [number, number, number] {
+  private aggregateColor(chunk: Chunk, ctx: ColorContext, max: number): [number, number, number] {
     const d = chunk.dominant;
     const rgb =
-      ctx.mode === 'action' && d
-        ? actionColor(d.src, d.action)
-        : d
-          ? uuidColor(d.uuid, d.nick)
-          : [120, 120, 120];
+      ctx.mode === 'action' && d ? actionColor(d.src, d.action) : d ? uuidColor(d.uuid, d.nick) : [120, 120, 120];
     const k = 0.5 + 0.5 * Math.sqrt(chunk.cnt / max);
 
-    return [
-      Math.round(rgb[0] * k),
-      Math.round(rgb[1] * k),
-      Math.round(rgb[2] * k),
-    ];
+    return [Math.round(rgb[0] * k), Math.round(rgb[1] * k), Math.round(rgb[2] * k)];
   }
   /** Bounded graphics per transport tile: no viewport-sized canvas or API work. */
-  private createLodResource(
-    layer: Container,
-    cells: { x: number; z: number; color: number }[],
-  ): PixiResource {
+  private createLodResource(layer: Container, cells: { x: number; z: number; color: number }[]): PixiResource {
     const container = new Container();
     const graphics = new Graphics();
     container.addChild(graphics);
@@ -508,11 +485,7 @@ export class MapView {
     };
   }
 
-  private createDetailLod(
-    events: CpEvent[],
-    ctx: ColorContext,
-    layer: Container,
-  ): PixiResource {
+  private createDetailLod(events: CpEvent[], ctx: ColorContext, layer: Container): PixiResource {
     return this.createLodResource(
       layer,
       detailLodCells(events).map(({ x, z, event }) => {
@@ -522,12 +495,7 @@ export class MapView {
     );
   }
 
-  private createAggregateLod(
-    chunks: Chunk[],
-    ctx: ColorContext,
-    max: number,
-    layer: Container,
-  ): PixiResource {
+  private createAggregateLod(chunks: Chunk[], ctx: ColorContext, max: number, layer: Container): PixiResource {
     return this.createLodResource(
       layer,
       aggregateLodCells(chunks).map(({ x, z, chunk }) => {
@@ -538,11 +506,9 @@ export class MapView {
   }
 
   private setAggregateTileVisible(key: string, visible: boolean) {
-    this.state.aggregateTiles
-      .get(key)
-      ?.resources.forEach(resource => {
-        (resource as PixiResource).displayObject.visible = visible;
-      });
+    this.state.aggregateTiles.get(key)?.resources.forEach((resource) => {
+      (resource as PixiResource).displayObject.visible = visible;
+    });
   }
 
   /** Redraw markers only when the camera scale has changed. */
@@ -552,10 +518,7 @@ export class MapView {
     }
 
     this.lodScale = this.cam.scale;
-    const tiles = [
-      ...this.state.aggregateTiles.values(),
-      ...this.state.detailTiles.values(),
-    ];
+    const tiles = [...this.state.aggregateTiles.values(), ...this.state.detailTiles.values()];
 
     for (const tile of tiles) {
       for (const resource of tile.resources) {
@@ -589,10 +552,7 @@ export class MapView {
 
     const w = this.app.renderer.width;
     const h = this.app.renderer.height;
-    this.world.position.set(
-      w / 2 - this.cam.cx * this.cam.scale,
-      h / 2 - this.cam.cz * this.cam.scale,
-    );
+    this.world.position.set(w / 2 - this.cam.cx * this.cam.scale, h / 2 - this.cam.cz * this.cam.scale);
 
     const key = `${this.cam.scale},${this.cam.cx},${this.cam.cz},${w},${h}`;
     if (key !== this.lastCamera) {
@@ -604,17 +564,14 @@ export class MapView {
   /** Convert screen coordinates to world block coordinates. */
   screenToBlock(sx: number, sy: number): [number, number] {
     const r = (this.app.canvas as HTMLCanvasElement).getBoundingClientRect();
-    return [
-      (sx - r.left - this.world.x) / this.cam.scale,
-      (sy - r.top - this.world.y) / this.cam.scale,
-    ];
+    return [(sx - r.left - this.world.x) / this.cam.scale, (sy - r.top - this.world.y) / this.cam.scale];
   }
 
   /** Bind panning, selection, hover, click, and cursor-centered zoom controls. */
   private bindInput(el: HTMLElement) {
-    el.addEventListener('contextmenu', e => e.preventDefault());
+    el.addEventListener('contextmenu', (e) => e.preventDefault());
 
-    el.addEventListener('pointerdown', e => {
+    el.addEventListener('pointerdown', (e) => {
       this.dragBtn = e.button;
       this.dragStart = {
         x: e.clientX,
@@ -629,22 +586,16 @@ export class MapView {
       }
     });
 
-    window.addEventListener('pointermove', e => {
+    window.addEventListener('pointermove', (e) => {
       const r = el.getBoundingClientRect();
-      const inMap =
-        e.clientX >= r.left &&
-        e.clientX <= r.right &&
-        e.clientY >= r.top &&
-        e.clientY <= r.bottom;
+      const inMap = e.clientX >= r.left && e.clientX <= r.right && e.clientY >= r.top && e.clientY <= r.bottom;
       const [x, z] = this.screenToBlock(e.clientX, e.clientY);
 
       this.cb.onCursorMove?.(inMap ? x : NaN, inMap ? z : NaN);
 
       if (this.dragBtn === 0) {
-        this.cam.cx =
-          this.dragStart.cx - (e.clientX - this.dragStart.x) / this.cam.scale;
-        this.cam.cz =
-          this.dragStart.cz - (e.clientY - this.dragStart.y) / this.cam.scale;
+        this.cam.cx = this.dragStart.cx - (e.clientX - this.dragStart.x) / this.cam.scale;
+        this.cam.cz = this.dragStart.cz - (e.clientY - this.dragStart.y) / this.cam.scale;
       } else if (this.dragBtn === 2 && this.selStart) {
         this.drawSelection(x, z);
       } else if (this.dragBtn === -1 && inMap) {
@@ -652,7 +603,7 @@ export class MapView {
       }
     });
 
-    window.addEventListener('pointerup', e => {
+    window.addEventListener('pointerup', (e) => {
       if (this.dragBtn === 2 && this.selStart) {
         const [x, z] = this.screenToBlock(e.clientX, e.clientY);
         const s = this.selStart;
@@ -665,13 +616,8 @@ export class MapView {
 
         this.selStart = null;
         this.selGraphics.clear();
-        this.cb.onSelection(
-          (bbox.x2 - bbox.x1) * (bbox.z2 - bbox.z1) > 4 ? bbox : null,
-        );
-      } else if (
-        this.dragBtn === 0 &&
-        Math.hypot(e.clientX - this.dragStart.x, e.clientY - this.dragStart.y) < 4
-      ) {
+        this.cb.onSelection((bbox.x2 - bbox.x1) * (bbox.z2 - bbox.z1) > 4 ? bbox : null);
+      } else if (this.dragBtn === 0 && Math.hypot(e.clientX - this.dragStart.x, e.clientY - this.dragStart.y) < 4) {
         const [x, z] = this.screenToBlock(e.clientX, e.clientY);
         this.click(x, z);
       }
@@ -681,17 +627,14 @@ export class MapView {
 
     el.addEventListener(
       'wheel',
-      e => {
+      (e) => {
         e.preventDefault();
 
         const [x, z] = this.screenToBlock(e.clientX, e.clientY);
         const delta = this.wheelDeltaPixels(e, el);
         const next = Math.min(
           MAX_SCALE,
-          Math.max(
-            MIN_SCALE,
-            this.cam.scale * Math.exp(-delta * WHEEL_ZOOM_SENSITIVITY),
-          ),
+          Math.max(MIN_SCALE, this.cam.scale * Math.exp(-delta * WHEEL_ZOOM_SENSITIVITY)),
         );
         const actual = next / this.cam.scale;
 
@@ -741,9 +684,7 @@ export class MapView {
     return (
       this.state.aggregateTiles
         .get(key)
-        ?.chunks.filter(
-          c => c.cx === coordinateToTile(x, 16) && c.cz === coordinateToTile(z, 16),
-        ) ?? []
+        ?.chunks.filter((c) => c.cx === coordinateToTile(x, 16) && c.cz === coordinateToTile(z, 16)) ?? []
     );
   }
 
@@ -779,9 +720,7 @@ export class MapView {
     this.cb.onAggregateClick?.(chunks);
 
     if (chunks.length) {
-      this.cb.onPrioritizeTile?.(
-        tileKeyForBlock(chunks[0].cx * 16, chunks[0].cz * 16, this.cfg.tileSize),
-      );
+      this.cb.onPrioritizeTile?.(tileKeyForBlock(chunks[0].cx * 16, chunks[0].cz * 16, this.cfg.tileSize));
     }
 
     this.cb.onClick([]);

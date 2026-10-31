@@ -60,8 +60,9 @@ export function sortOccupiedTiles(tiles: Iterable<TileCoordinate>, cameraTile: T
 
 /** Move a requested tile to the front while keeping a queue unique and stable otherwise. */
 export function prioritizeTileQueue(queue: readonly string[], priority: string): string[] {
-  return [priority, ...queue.filter(key => key !== priority)]
-    .filter((key, index, values) => values.indexOf(key) === index);
+  return [priority, ...queue.filter((key) => key !== priority)].filter(
+    (key, index, values) => values.indexOf(key) === index,
+  );
 }
 
 export function eventId(event: Pick<TileEvent, 'src' | 'rowid_src'>): string {
@@ -70,7 +71,7 @@ export function eventId(event: Pick<TileEvent, 'src' | 'rowid_src'>): string {
 
 export function dedupeEvents<T extends TileEvent>(events: Iterable<T>): T[] {
   const seen = new Set<string>();
-  return [...events].filter(event => {
+  return [...events].filter((event) => {
     const id = eventId(event);
     if (seen.has(id)) return false;
     seen.add(id);

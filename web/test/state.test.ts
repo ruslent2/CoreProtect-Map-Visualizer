@@ -39,7 +39,8 @@ describe('rollback filter', () => {
   });
 
   it('is sent to the server as rolledBack=1 or 0 and omitted for all', () => {
-    const query = (rolledBack: boolean | null) => new URLSearchParams(filtersToQuery({ ...defaultFilters(), rolledBack }));
+    const query = (rolledBack: boolean | null) =>
+      new URLSearchParams(filtersToQuery({ ...defaultFilters(), rolledBack }));
     expect(query(true).get('rolledBack')).toBe('1');
     expect(query(false).get('rolledBack')).toBe('0');
     expect(query(null).has('rolledBack')).toBe(false);
@@ -125,14 +126,22 @@ describe('time selection', () => {
   });
 
   it('calculates default, all, and open-ended effective times', () => {
-    expect(calculateEffectiveTime({ mode: 'default', from: null, to: null }, now))
-      .toEqual({ from: now - 6 * 3600, to: now, error: null });
-    expect(calculateEffectiveTime({ mode: 'all', from: 1, to: 2 }, now))
-      .toEqual({ from: null, to: null, error: null });
-    expect(calculateEffectiveTime({ mode: 'range', from: 10, to: null }, now))
-      .toEqual({ from: 10, to: now, error: null });
-    expect(calculateEffectiveTime({ mode: 'range', from: null, to: 20 }, now))
-      .toEqual({ from: null, to: 20, error: null });
+    expect(calculateEffectiveTime({ mode: 'default', from: null, to: null }, now)).toEqual({
+      from: now - 6 * 3600,
+      to: now,
+      error: null,
+    });
+    expect(calculateEffectiveTime({ mode: 'all', from: 1, to: 2 }, now)).toEqual({ from: null, to: null, error: null });
+    expect(calculateEffectiveTime({ mode: 'range', from: 10, to: null }, now)).toEqual({
+      from: 10,
+      to: now,
+      error: null,
+    });
+    expect(calculateEffectiveTime({ mode: 'range', from: null, to: 20 }, now)).toEqual({
+      from: null,
+      to: 20,
+      error: null,
+    });
   });
 
   it('returns an error for a reversed range', () => {

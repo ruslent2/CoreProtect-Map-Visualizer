@@ -16,7 +16,7 @@ export function enhanceSelect(select: HTMLSelectElement): HTMLElement {
   list.setAttribute('role', 'listbox');
   list.hidden = true;
   // mousedown у списку не забирає фокус у кнопки, тож blur не закриє список до кліку.
-  list.addEventListener('mousedown', event => event.preventDefault());
+  list.addEventListener('mousedown', (event) => event.preventDefault());
 
   if (select.parentNode) select.replaceWith(wrap);
   select.hidden = true;
@@ -61,16 +61,21 @@ export function enhanceSelect(select: HTMLSelectElement): HTMLElement {
   }
 
   function open() {
-    list.replaceChildren(...Array.from(select.options).map((option, index) => {
-      const item = document.createElement('div');
-      item.className = 'dropdown-option' + (index === select.selectedIndex ? ' selected' : '');
-      item.setAttribute('role', 'option');
-      item.setAttribute('aria-selected', String(index === select.selectedIndex));
-      item.textContent = option.textContent;
-      item.addEventListener('click', () => choose(index));
-      item.addEventListener('mouseenter', () => { active = index; highlight(); });
-      return item;
-    }));
+    list.replaceChildren(
+      ...Array.from(select.options).map((option, index) => {
+        const item = document.createElement('div');
+        item.className = 'dropdown-option' + (index === select.selectedIndex ? ' selected' : '');
+        item.setAttribute('role', 'option');
+        item.setAttribute('aria-selected', String(index === select.selectedIndex));
+        item.textContent = option.textContent;
+        item.addEventListener('click', () => choose(index));
+        item.addEventListener('mouseenter', () => {
+          active = index;
+          highlight();
+        });
+        return item;
+      }),
+    );
     active = Math.max(0, select.selectedIndex);
     list.hidden = false;
     button.setAttribute('aria-expanded', 'true');
@@ -80,13 +85,16 @@ export function enhanceSelect(select: HTMLSelectElement): HTMLElement {
 
   button.addEventListener('click', () => (isOpen() ? close() : open()));
   button.addEventListener('blur', () => close());
-  button.addEventListener('keydown', event => {
+  button.addEventListener('keydown', (event) => {
     const count = select.options.length;
     switch (event.key) {
       case 'ArrowDown':
       case 'ArrowUp': {
         event.preventDefault();
-        if (!isOpen()) { open(); return; }
+        if (!isOpen()) {
+          open();
+          return;
+        }
         active = (active + (event.key === 'ArrowDown' ? 1 : -1) + count) % count;
         highlight();
         return;
@@ -101,10 +109,14 @@ export function enhanceSelect(select: HTMLSelectElement): HTMLElement {
       case 'Enter':
       case ' ':
         event.preventDefault();
-        if (isOpen()) choose(active); else open();
+        if (isOpen()) choose(active);
+        else open();
         return;
       case 'Escape':
-        if (isOpen()) { event.preventDefault(); close(); }
+        if (isOpen()) {
+          event.preventDefault();
+          close();
+        }
         return;
     }
   });

@@ -30,7 +30,8 @@ test('normalizeConfig supplies safe tiled renderer defaults and clamps values', 
 
 test('normalizeConfig uses only a valid configured material prefix array', () => {
   assert.deepEqual(
-    normalizeConfig({ materialNamePrefixesToStrip: [' Minecraft: ', 42, 'custom:', '   '] }).materialNamePrefixesToStrip,
+    normalizeConfig({ materialNamePrefixesToStrip: [' Minecraft: ', 42, 'custom:', '   '] })
+      .materialNamePrefixesToStrip,
     ['minecraft:', 'custom:'],
   );
   assert.deepEqual(normalizeConfig({ materialNamePrefixesToStrip: 'minecraft:' }).materialNamePrefixesToStrip, []);
@@ -73,7 +74,7 @@ test('BlueMap proxy fetches and returns a tile', async () => {
     store,
     cfg: { bluemap: { enabled: true, baseUrl: 'http://maps.example.test' } },
     rootDir: 'nonexistent-test-root',
-    fetchImpl: async url => {
+    fetchImpl: async (url) => {
       requestedUrl = url;
       return new Response(new Uint8Array([137, 80, 78, 71]), {
         headers: { 'content-type': 'image/png' },
@@ -95,9 +96,17 @@ test('parseFilters accepts list inputs and clamps limits without a bypass', () =
     users: ['alice,bob', 'carol'],
     materials: 'STONE\nDIRT',
     actions: ['break', 'place'],
-    actionsExcl: '0', materialsExcl: 'true',
-    x1: '1', x2: '2', z1: '-3', z2: '4', y: '64', tFrom: '10', tTo: '20',
-    limit: '-1', pageSize: '5000',
+    actionsExcl: '0',
+    materialsExcl: 'true',
+    x1: '1',
+    x2: '2',
+    z1: '-3',
+    z2: '4',
+    y: '64',
+    tFrom: '10',
+    tTo: '20',
+    limit: '-1',
+    pageSize: '5000',
   });
 
   assert.deepEqual(filters.users, ['alice', 'bob', 'carol']);
@@ -137,6 +146,9 @@ for (const [query, message] of [
   [{ materials: 'x'.repeat(257) }, 'overlong pattern'],
 ]) {
   test(`parseFilters rejects ${message}`, () => {
-    assert.throws(() => parseFilters(query), error => error.statusCode === 400);
+    assert.throws(
+      () => parseFilters(query),
+      (error) => error.statusCode === 400,
+    );
   });
 }

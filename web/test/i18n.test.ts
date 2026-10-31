@@ -18,26 +18,38 @@ function flatten(dictionary: Dictionary, prefix = ''): Record<string, string> {
 
 const ukFlat = flatten(uk as Dictionary);
 const enFlat = flatten(en as Dictionary);
-const placeholders = (text: string) => [...text.matchAll(/{{\s*(\w+)\s*}}/g)].map(match => match[1]).sort();
+const placeholders = (text: string) => [...text.matchAll(/{{\s*(\w+)\s*}}/g)].map((match) => match[1]).sort();
 
 describe('i18n dictionaries', () => {
   it('have the same keys in uk and en', () => {
     const ukKeys = Object.keys(ukFlat);
     const enKeys = Object.keys(enFlat);
-    expect(ukKeys.filter(key => !(key in enFlat)), 'missing in en').toEqual([]);
-    expect(enKeys.filter(key => !(key in ukFlat)), 'missing in uk').toEqual([]);
+    expect(
+      ukKeys.filter((key) => !(key in enFlat)),
+      'missing in en',
+    ).toEqual([]);
+    expect(
+      enKeys.filter((key) => !(key in ukFlat)),
+      'missing in uk',
+    ).toEqual([]);
   });
 
   it('have no empty translations', () => {
-    for (const [name, flat] of [['uk', ukFlat], ['en', enFlat]] as const) {
-      const empty = Object.entries(flat).filter(([, value]) => value.trim() === '').map(([key]) => key);
+    for (const [name, flat] of [
+      ['uk', ukFlat],
+      ['en', enFlat],
+    ] as const) {
+      const empty = Object.entries(flat)
+        .filter(([, value]) => value.trim() === '')
+        .map(([key]) => key);
       expect(empty, `empty values in ${name}`).toEqual([]);
     }
   });
 
   it('use the same interpolation placeholders in both languages', () => {
-    const mismatched = Object.keys(ukFlat)
-      .filter(key => key in enFlat && placeholders(ukFlat[key]).join() !== placeholders(enFlat[key]).join());
+    const mismatched = Object.keys(ukFlat).filter(
+      (key) => key in enFlat && placeholders(ukFlat[key]).join() !== placeholders(enFlat[key]).join(),
+    );
     expect(mismatched).toEqual([]);
   });
 
@@ -50,7 +62,9 @@ describe('i18n dictionaries', () => {
 
   it('contain every key used in the sources', () => {
     const srcDir = join(__dirname, '..', 'src');
-    const sources = readdirSync(srcDir).filter(file => file.endsWith('.ts')).map(file => readFileSync(join(srcDir, file), 'utf8'));
+    const sources = readdirSync(srcDir)
+      .filter((file) => file.endsWith('.ts'))
+      .map((file) => readFileSync(join(srcDir, file), 'utf8'));
     const html = readFileSync(join(__dirname, '..', 'index.html'), 'utf8');
     const used = new Set<string>();
     for (const source of sources) {
@@ -58,7 +72,7 @@ describe('i18n dictionaries', () => {
     }
     for (const match of html.matchAll(/data-i18n="([\w.:-]+)"/g)) used.add(match[1]);
     for (const match of html.matchAll(/data-i18n-attr="[\w-]+:([\w.:-]+)"/g)) used.add(match[1]);
-    const missing = [...used].filter(key => !(key in ukFlat) || !(key in enFlat));
+    const missing = [...used].filter((key) => !(key in ukFlat) || !(key in enFlat));
     expect(used.size).toBeGreaterThan(0);
     expect(missing).toEqual([]);
   });

@@ -7,7 +7,25 @@ import { BluemapLayer } from './tiles';
 import { XaeroOverlayLayer } from './xaero-overlay';
 import { buildFilterPanel, buildLegend, type ScanControls } from './ui';
 import { enhanceSelect } from './dropdown';
-import { apiAggregate, apiAuthMe, apiBlacklist, apiBlockUser, apiConfig, apiEvent, apiLogout, apiMeta, apiQueryPage, apiQueryPlan, apiRefreshMeta, apiUnblockUser, type ApiConfig, type AuthUser, type CpEvent, type MetaData, type SourceSnapshot } from './api';
+import {
+  apiAggregate,
+  apiAuthMe,
+  apiBlacklist,
+  apiBlockUser,
+  apiConfig,
+  apiEvent,
+  apiLogout,
+  apiMeta,
+  apiQueryPage,
+  apiQueryPlan,
+  apiRefreshMeta,
+  apiUnblockUser,
+  type ApiConfig,
+  type AuthUser,
+  type CpEvent,
+  type MetaData,
+  type SourceSnapshot,
+} from './api';
 import { actionLabel, eventColor, rgbHex } from './colors';
 import { dedupeEvents, distributeEventsByTile, sortOccupiedTiles, tileBounds, tileKey } from './tile-utils';
 import { DetailQueueSession, DetailTileQueue, ManualScanOrchestrator } from './scan-pipeline';
@@ -51,7 +69,8 @@ let bluemapOpacity = 0.9;
 let xaero: XaeroOverlayLayer;
 let lodMarkersVisible = true;
 let detailPriority: ((key: string) => void) | null = null;
-let detailSession: DetailQueueSession | null = null, detailRun: Promise<void> | null = null;
+let detailSession: DetailQueueSession | null = null,
+  detailRun: Promise<void> | null = null;
 const detailSingleRuns = new Set<Promise<void>>();
 let inspectorRequest = 0;
 let cursorX: number | null = null;
@@ -86,12 +105,12 @@ function controls(): ScanControls {
     canLiveY: canLiveY(),
     bluemapOpacity,
     lodMarkersVisible,
-    onBluemapOpacity: alpha => {
+    onBluemapOpacity: (alpha) => {
       bluemapOpacity = alpha;
       bluemap?.setOpacity(alpha);
       xaero?.setOpacity(alpha);
     },
-    onLodMarkersVisible: enabled => {
+    onLodMarkersVisible: (enabled) => {
       lodMarkersVisible = enabled;
       map?.setLodMarkersVisible(enabled);
     },
@@ -106,10 +125,22 @@ function rebuild() {
   const active = document.activeElement;
   // Асинхронні статуси також можуть спричинити перебудову, тому відкладаємо її,
   // доки користувач редагує нативне поле дати й часу.
-  if (active instanceof HTMLInputElement && active.matches('[data-preserve-on-rebuild]') && filtersEl.contains(active)) {
+  if (
+    active instanceof HTMLInputElement &&
+    active.matches('[data-preserve-on-rebuild]') &&
+    filtersEl.contains(active)
+  ) {
     if (!deferredFilterRebuild) {
       deferredFilterRebuild = true;
-      active.addEventListener('blur', () => window.setTimeout(() => { deferredFilterRebuild = false; rebuild(); }, 0), { once: true });
+      active.addEventListener(
+        'blur',
+        () =>
+          window.setTimeout(() => {
+            deferredFilterRebuild = false;
+            rebuild();
+          }, 0),
+        { once: true },
+      );
     }
     buildLegend(legendEl, appliedRequest?.filters ?? draftFilters, resultUsers);
     return;
@@ -189,7 +220,8 @@ function applyView() {
   // Деталізація, що ще надходить, малюється за знімком запиту, тож оновлюємо й його.
   request.filters.mode = draftFilters.mode;
   request.filters.mix = draftFilters.mix;
-  const liveY = canLiveY(), liveRolledBack = canLiveRolledBack();
+  const liveY = canLiveY(),
+    liveRolledBack = canLiveRolledBack();
   const live: Partial<EventViewFilter> = {};
   if (liveY) live.y = draftFilters.y;
   if (liveRolledBack) live.rolledBack = draftFilters.rolledBack;
@@ -198,7 +230,8 @@ function applyView() {
   buildLegend(legendEl, request.filters, resultUsers);
   // Фільтр змінився, але даних для локального застосування немає: потрібне «Оновити дані».
   const yPending = !liveY && !sameYRange(draftFilters.y, shownLive.y ?? request.filters.y);
-  const rolledBackPending = !liveRolledBack && draftFilters.rolledBack !== (shownLive.rolledBack ?? request.filters.rolledBack);
+  const rolledBackPending =
+    !liveRolledBack && draftFilters.rolledBack !== (shownLive.rolledBack ?? request.filters.rolledBack);
   if (yPending || rolledBackPending) markDirty();
 }
 
@@ -210,10 +243,12 @@ function onFiltersChanged(patch: Partial<Filters>) {
     updateHud();
   }
   const keys = Object.keys(patch) as (keyof Filters)[];
-  const viewOnly = keys.length > 0 && keys.every(key =>
-    key === 'mode' || key === 'mix'
-    || (key === 'y' && canLiveY())
-    || (key === 'rolledBack' && canLiveRolledBack()));
+  const viewOnly =
+    keys.length > 0 &&
+    keys.every(
+      (key) =>
+        key === 'mode' || key === 'mix' || (key === 'y' && canLiveY()) || (key === 'rolledBack' && canLiveRolledBack()),
+    );
   if (viewOnly) {
     scheduleViewApply();
     return;
@@ -223,7 +258,10 @@ function onFiltersChanged(patch: Partial<Filters>) {
 function onTimeChanged(time: TimeSelection, preserveEditor = false) {
   draftTime = time;
   rangeError = null;
-  if (!preserveEditor) { markDirty(); return; }
+  if (!preserveEditor) {
+    markDirty();
+    return;
+  }
   scan.markDirty();
   dirty = scan.dirty;
   if (!loading) {
@@ -233,13 +271,11 @@ function onTimeChanged(time: TimeSelection, preserveEditor = false) {
   renderStatus();
 }
 function updateHud() {
-  const coordinates = cursorX == null || cursorZ == null
-    ? 'X: — Z: —'
-    : `X: ${Math.floor(cursorX)} Z: ${Math.floor(cursorZ)}`;
+  const coordinates =
+    cursorX == null || cursorZ == null ? 'X: — Z: —' : `X: ${Math.floor(cursorX)} Z: ${Math.floor(cursorZ)}`;
   const displayedWorld = appliedRequest?.filters.world;
-  const differentDisplayedWorld = displayedWorld && displayedWorld !== draftFilters.world
-    ? t('status.displayedData', { world: displayedWorld })
-    : '';
+  const differentDisplayedWorld =
+    displayedWorld && displayedWorld !== draftFilters.world ? t('status.displayedData', { world: displayedWorld }) : '';
   const scale = (1 / map.cam.scale).toFixed(1);
 
   hudEl.textContent = [
@@ -320,14 +356,21 @@ async function loadDetailTile(request: AppliedRequest, key: string) {
     cursor = page.nextCursor;
   } while (cursor);
 
-  return isCurrent(request)
-    && map.installEventTile(request.generation, key, dedupeEvents(events), colorContext(request.filters));
+  return (
+    isCurrent(request) &&
+    map.installEventTile(request.generation, key, dedupeEvents(events), colorContext(request.filters))
+  );
 }
 function detailProgress(request: AppliedRequest) {
-  return t('status.detailProgress', { loaded: detailSession?.loadedCount ?? 0, total: request.aggregateTileTotal ?? 0, events: aggregateTotal(request) });
+  return t('status.detailProgress', {
+    loaded: detailSession?.loadedCount ?? 0,
+    total: request.aggregateTileTotal ?? 0,
+    events: aggregateTotal(request),
+  });
 }
 function startMassDetails() {
-  const session = detailSession, request = appliedRequest;
+  const session = detailSession,
+    request = appliedRequest;
   if (!session || !request || !isCurrent(request) || detailRun) return;
   if (!session.startMass()) return;
 
@@ -352,7 +395,12 @@ function startMassDetails() {
         } finally {
           session.queue.complete(key, installed);
           if (isCurrent(request) && !session.isStopped) {
-            showStatus(t('status.detailing', { partial: partial ? t('status.partialErrorsPrefix') : '', progress: detailProgress(request) }));
+            showStatus(
+              t('status.detailing', {
+                partial: partial ? t('status.partialErrorsPrefix') : '',
+                progress: detailProgress(request),
+              }),
+            );
           }
         }
       }
@@ -360,7 +408,13 @@ function startMassDetails() {
 
     await Promise.all(Array.from({ length: Math.min(session.workerCap, total) }, worker));
     if (isCurrent(request) && !session.isStopped) {
-      showStatus(t('status.detailDone', { partial: partial ? t('status.partialErrorsDone') : '', progress: detailProgress(request) }), partial > 0);
+      showStatus(
+        t('status.detailDone', {
+          partial: partial ? t('status.partialErrorsDone') : '',
+          progress: detailProgress(request),
+        }),
+        partial > 0,
+      );
     }
   })().finally(() => {
     if (detailRun === run) detailRun = null;
@@ -373,7 +427,8 @@ function startMassDetails() {
 }
 
 function startSingleDetail(key: string) {
-  const session = detailSession, request = appliedRequest;
+  const session = detailSession,
+    request = appliedRequest;
   if (!session || !request || !isCurrent(request)) return;
   const action = session.startSingle(key);
   if (action === 'prioritized') {
@@ -478,33 +533,30 @@ async function apply() {
       if (!isCurrent(request) || !map.commitDataGeneration(localGeneration)) return;
 
       resultUsers = uniqueEventUsers(events);
-      resultBounds = plan.bounds ?? (events.length
-        ? {
-            x1: Math.min(...events.map(event => event.x)),
-            x2: Math.max(...events.map(event => event.x)),
-            z1: Math.min(...events.map(event => event.z)),
-            z2: Math.max(...events.map(event => event.z)),
-          }
-        : null);
+      resultBounds =
+        plan.bounds ??
+        (events.length
+          ? {
+              x1: Math.min(...events.map((event) => event.x)),
+              x2: Math.max(...events.map((event) => event.x)),
+              z1: Math.min(...events.map((event) => event.z)),
+              z2: Math.max(...events.map((event) => event.z)),
+            }
+          : null);
       showStatus(t('status.eventsLoaded', { count: plan.totalExact ? events.length : `>${plan.threshold}` }));
       return;
     }
 
     // Large queries first display the aggregate layer and prepare detail tiles.
     showStatus(t('status.buildingOverview'));
-    const aggregate = await apiAggregate(
-      filters,
-      request.snapshot,
-      config.coreProtectTiles.tileSize,
-      signal,
-    );
+    const aggregate = await apiAggregate(filters, request.snapshot, config.coreProtectTiles.tileSize, signal);
     if (!isCurrent(request)) return;
 
     const grouped = new Map<string, typeof aggregate.chunks>();
     for (const chunk of aggregate.chunks) {
       const key = tileKey({
-        x: Math.floor(chunk.cx * 16 / config.coreProtectTiles.tileSize),
-        z: Math.floor(chunk.cz * 16 / config.coreProtectTiles.tileSize),
+        x: Math.floor((chunk.cx * 16) / config.coreProtectTiles.tileSize),
+        z: Math.floor((chunk.cz * 16) / config.coreProtectTiles.tileSize),
       });
       const group = grouped.get(key);
       if (group) group.push(chunk);
@@ -519,7 +571,7 @@ async function apply() {
 
     resultUsers = aggregate.players;
     resultBounds = aggregate.bbox;
-    const occupied = aggregate.occupiedTiles.map(tile => ({ x: tile.tx, z: tile.tz }));
+    const occupied = aggregate.occupiedTiles.map((tile) => ({ x: tile.tx, z: tile.tz }));
     const priorityCenter = {
       x: Math.floor(request.center.x / config.coreProtectTiles.tileSize),
       z: Math.floor(request.center.z / config.coreProtectTiles.tileSize),
@@ -556,7 +608,10 @@ function stop() {
 }
 // Coordinates from Pixi are viewport-relative, while the tooltip is positioned inside #map-wrap.
 function onHover(events: CpEvent[] | null, sx: number, sy: number) {
-  if (!events?.length) { tooltipEl.style.display = 'none'; return; }
+  if (!events?.length) {
+    tooltipEl.style.display = 'none';
+    return;
+  }
 
   const context = colorContext(appliedRequest?.filters ?? draftFilters);
   const visibleEvents = events.slice(0, 6);
@@ -681,11 +736,18 @@ function renderInspector(event: CpEvent, nearby: CpEvent[], blockEvents: CpEvent
 
   // Усі події в точці вже завантажено разом із плиткою карти, тому їх
   // можна вибирати без повторного клацання перекритих маркерів.
-  const blockHeading = inspectorElement('h3', t('inspector.blockEvents', { x: event.x, z: event.z, count: blockEvents.length }));
-  const blockCard = inspectorElement('div'); blockCard.className = 'card block-events';
-  for (const blockEvent of [...blockEvents].sort((left, right) => right.time - left.time || right.rowid_src - left.rowid_src)) {
+  const blockHeading = inspectorElement(
+    'h3',
+    t('inspector.blockEvents', { x: event.x, z: event.z, count: blockEvents.length }),
+  );
+  const blockCard = inspectorElement('div');
+  blockCard.className = 'card block-events';
+  for (const blockEvent of [...blockEvents].sort(
+    (left, right) => right.time - left.time || right.rowid_src - left.rowid_src,
+  )) {
     const item = inspectorElement('button', eventListLabel(blockEvent));
-    item.type = 'button'; item.className = 'block-event-item';
+    item.type = 'button';
+    item.className = 'block-event-item';
     if (sameEvent(blockEvent, event)) {
       item.classList.add('active');
       item.setAttribute('aria-current', 'true');
@@ -706,7 +768,10 @@ function renderInspector(event: CpEvent, nearby: CpEvent[], blockEvents: CpEvent
     for (const nearbyEvent of nearby) {
       const item = inspectorElement('div');
       item.className = 'nearby-item';
-      const actor = inspectorElement('div', t('inspector.player', { nick: nearbyEvent.nick ?? t('inspector.unknownPlayer') }));
+      const actor = inspectorElement(
+        'div',
+        t('inspector.player', { nick: nearbyEvent.nick ?? t('inspector.unknownPlayer') }),
+      );
       actor.className = 'nearby-actor';
       const nearbyDetails = [
         eventActionLabel(nearbyEvent),
@@ -725,8 +790,10 @@ function renderInspector(event: CpEvent, nearby: CpEvent[], blockEvents: CpEvent
 async function showInspectorEvent(event: CpEvent, blockEvents: CpEvent[]) {
   // The monotonically increasing token ignores stale asynchronous responses.
   const request = ++inspectorRequest;
-  inspectorEl.classList.add('open'); inspectorEl.replaceChildren();
-  const loadingMessage = inspectorElement('div', t('inspector.loading')); loadingMessage.className = 'tiny';
+  inspectorEl.classList.add('open');
+  inspectorEl.replaceChildren();
+  const loadingMessage = inspectorElement('div', t('inspector.loading'));
+  loadingMessage.className = 'tiny';
   inspectorEl.append(loadingMessage);
   try {
     const detail = await apiEvent(event.src, event.rowid_src);
@@ -735,13 +802,19 @@ async function showInspectorEvent(event: CpEvent, blockEvents: CpEvent[]) {
   } catch {
     if (request !== inspectorRequest) return;
     inspectorEl.replaceChildren();
-    const message = inspectorElement('div', t('inspector.loadFailed')); message.className = 'tiny';
-    const close = inspectorElement('button', t('inspector.closeButton')); close.type = 'button'; close.addEventListener('click', closeInspector);
+    const message = inspectorElement('div', t('inspector.loadFailed'));
+    message.className = 'tiny';
+    const close = inspectorElement('button', t('inspector.closeButton'));
+    close.type = 'button';
+    close.addEventListener('click', closeInspector);
     inspectorEl.append(message, close);
   }
 }
 async function onClick(events: CpEvent[]) {
-  if (!events.length) { closeInspector(); return; }
+  if (!events.length) {
+    closeInspector();
+    return;
+  }
   // Події впорядковані від нових до старих, тому верхня подія є першою.
   await showInspectorEvent(events[0], events);
 }
@@ -752,7 +825,7 @@ async function bootMap() {
   draftFilters = defaultFilters(config.defaultLimit);
   meta = await apiMeta();
 
-  if (!meta.worlds.some(world => world.world === draftFilters.world)) {
+  if (!meta.worlds.some((world) => world.world === draftFilters.world)) {
     draftFilters.world = meta.worlds[0]?.world ?? draftFilters.world;
   }
 
@@ -761,13 +834,13 @@ async function bootMap() {
     {
       onHover,
       onClick,
-      onSelection: bbox => {
+      onSelection: (bbox) => {
         draftFilters.bbox = bbox;
         markDirty();
       },
       onCameraChange: onCamera,
       onCursorMove,
-      onPrioritizeTile: key => detailPriority?.(key),
+      onPrioritizeTile: (key) => detailPriority?.(key),
     },
     config.coreProtectTiles,
   );
@@ -785,9 +858,10 @@ async function bootMap() {
   const overlay = config.mapOverlay;
   if (overlay?.enabled && overlay.url) {
     xaero.setPlacement({ x: overlay.x, z: overlay.z, pxPerBlock: overlay.pxPerBlock });
-    fetch(overlay.url).then(r => r.ok ? r.blob() : Promise.reject(new Error(String(r.status))))
-      .then(blob => xaero.load(blob))
-      .catch(err => console.warn('Map overlay failed to load', err));
+    fetch(overlay.url)
+      .then((r) => (r.ok ? r.blob() : Promise.reject(new Error(String(r.status)))))
+      .then((blob) => xaero.load(blob))
+      .catch((err) => console.warn('Map overlay failed to load', err));
   }
   // Камера вже повідомила про свій стан до створення шару, тож без цього тайли
   // з'являються лише після першої зміни масштабу.
@@ -797,7 +871,7 @@ async function bootMap() {
   rebuild();
   showStatus(t('status.initial'));
 
-  window.addEventListener('keydown', event => {
+  window.addEventListener('keydown', (event) => {
     if (!event.repeat && (event.ctrlKey || event.metaKey) && event.key === 'Enter') {
       event.preventDefault();
       void apply();
@@ -808,25 +882,31 @@ async function bootMap() {
 async function renderBlacklist() {
   const container = $('blacklist-users');
   const result = await apiBlacklist();
-  container.replaceChildren(...result.users.map(user => {
-    const row = document.createElement('div');
-    row.className = 'blacklist-row';
-    const label = document.createElement('span');
-    label.textContent = user.discordId;
-    const remove = document.createElement('button');
-    remove.type = 'button';
-    remove.textContent = t('blacklist.remove');
-    remove.addEventListener('click', async () => { await apiUnblockUser(user.discordId); await renderBlacklist(); });
-    row.append(label, remove);
-    return row;
-  }));
+  container.replaceChildren(
+    ...result.users.map((user) => {
+      const row = document.createElement('div');
+      row.className = 'blacklist-row';
+      const label = document.createElement('span');
+      label.textContent = user.discordId;
+      const remove = document.createElement('button');
+      remove.type = 'button';
+      remove.textContent = t('blacklist.remove');
+      remove.addEventListener('click', async () => {
+        await apiUnblockUser(user.discordId);
+        await renderBlacklist();
+      });
+      row.append(label, remove);
+      return row;
+    }),
+  );
   if (!result.users.length) container.textContent = t('blacklist.empty');
 }
 
 /** Налаштовує профіль та адміністративні дії. */
 function setupAccount(user: AuthUser) {
   const renderAccountName = () => {
-    $('account-name').textContent = `${user.username} · ${user.role === 'admin' ? t('auth.roleAdmin') : t('auth.roleModerator')}`;
+    $('account-name').textContent =
+      `${user.username} · ${user.role === 'admin' ? t('auth.roleAdmin') : t('auth.roleModerator')}`;
   };
   renderAccountName();
   const languageSelect = $('language-select') as HTMLSelectElement;
@@ -844,27 +924,39 @@ function setupAccount(user: AuthUser) {
     }
     if ($('admin-dialog').hasAttribute('open')) await renderBlacklist();
   });
-  $('logout-button').addEventListener('click', async () => { await apiLogout(); location.reload(); });
+  $('logout-button').addEventListener('click', async () => {
+    await apiLogout();
+    location.reload();
+  });
   if (user.role !== 'admin') return;
   const adminButton = $('admin-button') as HTMLButtonElement;
   const dialog = $('admin-dialog') as HTMLDialogElement;
   adminButton.hidden = false;
-  adminButton.addEventListener('click', async () => { dialog.showModal(); await renderBlacklist(); });
+  adminButton.addEventListener('click', async () => {
+    dialog.showModal();
+    await renderBlacklist();
+  });
   $('blacklist-add').addEventListener('click', async () => {
     const input = $('blacklist-id') as HTMLInputElement;
     const error = $('blacklist-error');
-    try { await apiBlockUser(input.value.trim()); input.value = ''; error.textContent = ''; await renderBlacklist(); }
-    catch (cause) { error.textContent = t('blacklist.addFailed', { error: String(cause) }); }
+    try {
+      await apiBlockUser(input.value.trim());
+      input.value = '';
+      error.textContent = '';
+      await renderBlacklist();
+    } catch (cause) {
+      error.textContent = t('blacklist.addFailed', { error: String(cause) });
+    }
   });
 }
 
 /** Перекладає статичну розмітку з index.html (data-i18n, data-i18n-attr="атрибут:ключ"). */
 function translateStatic() {
   document.documentElement.lang = i18n.resolvedLanguage ?? 'en';
-  document.querySelectorAll<HTMLElement>('[data-i18n]').forEach(element => {
+  document.querySelectorAll<HTMLElement>('[data-i18n]').forEach((element) => {
     element.textContent = t(element.dataset.i18n!);
   });
-  document.querySelectorAll<HTMLElement>('[data-i18n-attr]').forEach(element => {
+  document.querySelectorAll<HTMLElement>('[data-i18n-attr]').forEach((element) => {
     const [attribute, key] = element.dataset.i18nAttr!.split(':');
     element.setAttribute(attribute, t(key));
   });
@@ -884,4 +976,6 @@ async function boot() {
   await bootMap();
 }
 
-void boot().catch(error => { $('auth-message').textContent = t('auth.error', { error: String(error) }); });
+void boot().catch((error) => {
+  $('auth-message').textContent = t('auth.error', { error: String(error) });
+});

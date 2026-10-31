@@ -16,7 +16,11 @@ export interface BluemapConfig {
   maxZoom: number;
 }
 
-interface TileKey { z: number; tx: number; tz: number }
+interface TileKey {
+  z: number;
+  tx: number;
+  tz: number;
+}
 
 /** Keeps UI input and sprites inside Pixi's supported alpha range. */
 export function normalizeBluemapOpacity(alpha: number): number {
@@ -72,8 +76,7 @@ export class BluemapLayer {
     const lod = Math.round(Math.log(Math.max(1, desiredBlocksPerTile) / baseBlocks) / Math.log(this.cfg.lodFactor));
     // zoom=1: 1 пиксель = 1 блок; zoom=2: 1 = 5 блоков;
     // zoom=3: 1 = 25 блоков.
-    const z = Math.min(this.cfg.maxZoom,
-      Math.max(1, 1 + lod));
+    const z = Math.min(this.cfg.maxZoom, Math.max(1, 1 + lod));
     // Тайли попереднього рівня лишаються на екрані, доки їх не перекриють тайли нового.
     this.zoom = z;
     this.view = view;
@@ -84,17 +87,22 @@ export class BluemapLayer {
     // zoom=1: 500 блоків на грань, zoom=2: 2500, zoom=3: 12500.
     const bpt = this.cfg.blocksPerTileAtZoom0 * Math.pow(this.cfg.lodFactor, z - 1);
     const tileHeightBlocks = bpt * this.cfg.tileAspectRatio;
-    const tx1 = Math.floor(view.x1 / bpt), tx2 = Math.floor(view.x2 / bpt);
-    const tz1 = Math.floor(view.z1 / tileHeightBlocks), tz2 = Math.floor(view.z2 / tileHeightBlocks);
+    const tx1 = Math.floor(view.x1 / bpt),
+      tx2 = Math.floor(view.x2 / bpt);
+    const tz1 = Math.floor(view.z1 / tileHeightBlocks),
+      tz2 = Math.floor(view.z2 / tileHeightBlocks);
     if ((tx2 - tx1 + 1) * (tz2 - tz1 + 1) > 400) return; // слишком далеко — не грузим
 
-    for (let tx = tx1; tx <= tx2; tx++) for (let tz = tz1; tz <= tz2; tz++) {
-      this.load(z, tx, tz, bpt, tileHeightBlocks);
-    }
+    for (let tx = tx1; tx <= tx2; tx++)
+      for (let tz = tz1; tz <= tz2; tz++) {
+        this.load(z, tx, tz, bpt, tileHeightBlocks);
+      }
     this.prune();
   }
 
-  private k(z: number, tx: number, tz: number) { return `${z}/${tx}/${tz}`; }
+  private k(z: number, tx: number, tz: number) {
+    return `${z}/${tx}/${tz}`;
+  }
 
   private tileBlocks(z: number) {
     const width = this.cfg.blocksPerTileAtZoom0 * Math.pow(this.cfg.lodFactor, z - 1);
@@ -113,15 +121,20 @@ export class BluemapLayer {
       const [z, tx, tz] = key.split('/').map(Number);
       const size = this.tileBlocks(z);
       // Видима частина площі тайла в блоках.
-      const x1 = Math.max(tx * size.width, view.x1), x2 = Math.min((tx + 1) * size.width, view.x2);
-      const z1 = Math.max(tz * size.height, view.z1), z2 = Math.min((tz + 1) * size.height, view.z2);
+      const x1 = Math.max(tx * size.width, view.x1),
+        x2 = Math.min((tx + 1) * size.width, view.x2);
+      const z1 = Math.max(tz * size.height, view.z1),
+        z2 = Math.min((tz + 1) * size.height, view.z2);
       let remove = x1 > x2 || z1 > z2;
       if (!remove && z !== this.zoom) {
         remove = true;
         for (let cx = Math.floor(x1 / current.width); remove && cx <= Math.floor(x2 / current.width); cx++) {
           for (let cz = Math.floor(z1 / current.height); cz <= Math.floor(z2 / current.height); cz++) {
             const covering = this.k(this.zoom, cx, cz);
-            if (!this.tiles.has(covering) && !this.missing.has(covering)) { remove = false; break; }
+            if (!this.tiles.has(covering) && !this.missing.has(covering)) {
+              remove = false;
+              break;
+            }
           }
         }
       }
@@ -138,11 +151,13 @@ export class BluemapLayer {
     const generation = this.generation;
     this.pending.add(key);
     const prefix = this.cfg.tileTemplate.startsWith('/') ? '' : this.cfg.baseUrl;
-    const url = prefix + this.cfg.tileTemplate
-      .replace('{world}', encodeURIComponent(this.world))
-      .replace('{zoom}', String(z))
-      .replace('{x}', String(tx))
-      .replace('{z}', String(tz));
+    const url =
+      prefix +
+      this.cfg.tileTemplate
+        .replace('{world}', encodeURIComponent(this.world))
+        .replace('{zoom}', String(z))
+        .replace('{x}', String(tx))
+        .replace('{z}', String(tz));
     const img = new Image();
     img.crossOrigin = 'anonymous';
     img.onload = () => {
@@ -186,8 +201,7 @@ export class BluemapLayer {
     // нижняя половина содержит карту высот и в проект не попадает.
     cv.height = Math.floor(img.naturalHeight / 2) - 1;
     const ctx = cv.getContext('2d', { willReadFrequently: true })!;
-    ctx.drawImage(img, 0, 0, cv.width, cv.height,
-      0, 0, cv.width, cv.height);
+    ctx.drawImage(img, 0, 0, cv.width, cv.height, 0, 0, cv.width, cv.height);
     return cv;
   }
 }

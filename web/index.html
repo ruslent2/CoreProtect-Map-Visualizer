@@ -1,51 +1,63 @@
 <!doctype html>
 <html lang="uk">
-<head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>GrieferFinder</title>
-  <link rel="stylesheet" href="/src/style.css" />
-</head>
-<body>
-  <section id="auth-screen" class="auth-screen">
-    <div class="auth-card">
-      <div class="auth-mark">CP</div>
-      <h1>GrieferFinder</h1>
-      <p id="auth-message" data-i18n="auth.message"></p>
-      <a class="discord-button" href="/api/auth/discord/start" data-i18n="auth.login"></a>
-    </div>
-    <div class="copyright">© 2026 ruslent · GrieferFinder</div>
-  </section>
-  <div id="app" hidden>
-    <header id="page-header">
-      <div id="account-bar">
-        <span id="account-name"></span>
-        <select id="language-select" data-i18n-attr="aria-label:language.label"><option value="uk">Українська</option><option value="en">English</option></select>
-        <button id="admin-button" type="button" hidden data-i18n="blacklist.title"></button>
-        <button id="logout-button" type="button" data-i18n="auth.logout"></button>
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>GrieferFinder</title>
+    <link rel="stylesheet" href="/src/style.css" />
+  </head>
+  <body>
+    <section id="auth-screen" class="auth-screen">
+      <div class="auth-card">
+        <div class="auth-mark">CP</div>
+        <h1>GrieferFinder</h1>
+        <p id="auth-message" data-i18n="auth.message"></p>
+        <a class="discord-button" href="/api/auth/discord/start" data-i18n="auth.login"></a>
       </div>
-    </header>
-    <div id="workspace">
-      <aside id="filters"></aside>
-      <main id="map-wrap">
-        <div id="map"></div>
-        <div id="tooltip"></div>
-        <div id="statusbar"></div>
-        <div id="legend" hidden></div>
-        <div id="world-hud"></div>
-        <div class="copyright">© 2026 ruslent · GrieferFinder</div>
-      </main>
-      <aside id="inspector"></aside>
+      <div class="copyright">© 2026 ruslent · GrieferFinder</div>
+    </section>
+    <div id="app" hidden>
+      <header id="page-header">
+        <div id="account-bar">
+          <span id="account-name"></span>
+          <select id="language-select" data-i18n-attr="aria-label:language.label">
+            <option value="uk">Українська</option>
+            <option value="en">English</option>
+          </select>
+          <button id="admin-button" type="button" hidden data-i18n="blacklist.title"></button>
+          <button id="logout-button" type="button" data-i18n="auth.logout"></button>
+        </div>
+      </header>
+      <div id="workspace">
+        <aside id="filters"></aside>
+        <main id="map-wrap">
+          <div id="map"></div>
+          <div id="tooltip"></div>
+          <div id="statusbar"></div>
+          <div id="legend" hidden></div>
+          <div id="world-hud"></div>
+          <div class="copyright">© 2026 ruslent · GrieferFinder</div>
+        </main>
+        <aside id="inspector"></aside>
+      </div>
     </div>
-  </div>
-  <dialog id="admin-dialog">
-    <form method="dialog" class="admin-panel">
-      <header><h2 data-i18n="blacklist.title"></h2><button value="cancel" data-i18n-attr="aria-label:blacklist.close">×</button></header>
-      <div class="blacklist-add"><input id="blacklist-id" inputmode="numeric" data-i18n-attr="placeholder:blacklist.idPlaceholder" /><button id="blacklist-add" type="button" data-i18n="blacklist.add"></button></div>
-      <p id="blacklist-error" class="form-error"></p>
-      <div id="blacklist-users"></div>
-    </form>
-  </dialog>
-  <script type="module" src="/src/main.ts"></script>
-</body>
+    <dialog id="admin-dialog">
+      <form method="dialog" class="admin-panel">
+        <header>
+          <h2 data-i18n="blacklist.title"></h2>
+          <button value="cancel" data-i18n-attr="aria-label:blacklist.close">×</button>
+        </header>
+        <div class="blacklist-add">
+          <input id="blacklist-id" inputmode="numeric" data-i18n-attr="placeholder:blacklist.idPlaceholder" /><button
+            id="blacklist-add"
+            type="button"
+            data-i18n="blacklist.add"
+          ></button>
+        </div>
+        <p id="blacklist-error" class="form-error"></p>
+        <div id="blacklist-users"></div>
+      </form>
+    </dialog>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
 </html>

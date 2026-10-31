@@ -79,7 +79,10 @@ test('aggregateChunks does not return stale overview data', () => {
     insert.run(200, 32, 0);
     const second = aggregateChunks(store, {});
     assert.equal(second.chunks.length, 2);
-    assert.equal(second.chunks.reduce((sum, chunk) => sum + chunk.cnt, 0), 2);
+    assert.equal(
+      second.chunks.reduce((sum, chunk) => sum + chunk.cnt, 0),
+      2,
+    );
   } finally {
     store.close();
   }
@@ -89,10 +92,15 @@ test('queryEvents qualifies user filter when joining co_user', () => {
   const store = createStore();
   try {
     store.getDb().prepare('INSERT INTO co_material_map VALUES (?, ?)').run(1, 'STONE');
-    store.getDb().prepare(`
+    store
+      .getDb()
+      .prepare(
+        `
       INSERT INTO co_block (time, user, wid, x, y, z, type, action)
       VALUES (?, 1, 1, 0, 64, 0, 1, 0)
-    `).run(100);
+    `,
+      )
+      .run(100);
 
     const result = queryEvents(store, { users: ['tester'] });
 
@@ -107,10 +115,15 @@ test('queryEvents qualifies time filter when joining lookup tables', () => {
   const store = createStore();
   try {
     store.getDb().prepare('INSERT INTO co_material_map VALUES (?, ?)').run(1, 'STONE');
-    store.getDb().prepare(`
+    store
+      .getDb()
+      .prepare(
+        `
       INSERT INTO co_block (time, user, wid, x, y, z, type, action)
       VALUES (?, 1, 1, 0, 64, 0, 1, 0)
-    `).run(100);
+    `,
+      )
+      .run(100);
 
     const result = queryEvents(store, { tFrom: 100, tTo: 100 });
 

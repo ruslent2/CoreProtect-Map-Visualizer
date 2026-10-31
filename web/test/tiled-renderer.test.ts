@@ -1,8 +1,19 @@
 import { describe, expect, it } from 'vitest';
-import { detailLodCells, shouldDisplayLodMarkers, shouldShowLodOverlay, TiledRenderState, tileRasterParts } from '../src/tiled-renderer';
+import {
+  detailLodCells,
+  shouldDisplayLodMarkers,
+  shouldShowLodOverlay,
+  TiledRenderState,
+  tileRasterParts,
+} from '../src/tiled-renderer';
 
 function resource() {
-  const value = { destroyed: 0, destroy() { value.destroyed++; } };
+  const value = {
+    destroyed: 0,
+    destroy() {
+      value.destroyed++;
+    },
+  };
   return value;
 }
 
@@ -10,8 +21,13 @@ describe('tiled raster planning', () => {
   it('never allocates a canvas from the overall data bounding box', () => {
     const parts = tileRasterParts(256, 128);
     expect(parts).toHaveLength(4);
-    expect(parts.every(part => part.width <= 128 && part.height <= 128)).toBe(true);
-    expect(parts.map(part => [part.x, part.z])).toEqual([[0, 0], [128, 0], [0, 128], [128, 128]]);
+    expect(parts.every((part) => part.width <= 128 && part.height <= 128)).toBe(true);
+    expect(parts.map((part) => [part.x, part.z])).toEqual([
+      [0, 0],
+      [128, 0],
+      [0, 128],
+      [128, 128],
+    ]);
   });
 
   it('activates the explicit LOD overlay only below one pixel per world block', () => {
@@ -28,7 +44,21 @@ describe('tiled raster planning', () => {
   });
 
   it('keeps an isolated detail-only event visible in its negative-coordinate LOD cell', () => {
-    const event = { src: 'block', rowid_src: 7, time: 123, nick: 'Alex', uuid: null, world: 'world', x: -17, y: 64, z: -1, material: 'minecraft:stone', amount: null, action: 1, rolled_back: 0 };
+    const event = {
+      src: 'block',
+      rowid_src: 7,
+      time: 123,
+      nick: 'Alex',
+      uuid: null,
+      world: 'world',
+      x: -17,
+      y: 64,
+      z: -1,
+      material: 'minecraft:stone',
+      amount: null,
+      action: 1,
+      rolled_back: 0,
+    };
     expect(detailLodCells([event])).toEqual([{ x: -32, z: -16, event }]);
   });
 });
@@ -36,7 +66,9 @@ describe('tiled raster planning', () => {
 describe('tiled resource ownership and generations', () => {
   it('replacing one tile does not remove its neighbour', () => {
     const state = new TiledRenderState();
-    const left = resource(), right = resource(), replacement = resource();
+    const left = resource(),
+      right = resource(),
+      replacement = resource();
     state.begin(1);
     state.stageDetail(1, '0:0', { resources: [left], events: [], hitIndex: new Map() });
     state.stageDetail(1, '1:0', { resources: [right], events: [], hitIndex: new Map() });
@@ -60,7 +92,8 @@ describe('tiled resource ownership and generations', () => {
 
   it('rejects stale generation writes without changing committed tiles', () => {
     const state = new TiledRenderState();
-    const committed = resource(), stale = resource();
+    const committed = resource(),
+      stale = resource();
     state.begin(1);
     state.stageDetail(1, '0:0', { resources: [committed], events: [], hitIndex: new Map() });
     state.commit(1);
@@ -73,12 +106,16 @@ describe('tiled resource ownership and generations', () => {
 
   it('restyling swaps only the targeted committed tile and keeps its source events', () => {
     const state = new TiledRenderState();
-    const old = resource(), neighbour = resource(), fresh = resource();
+    const old = resource(),
+      neighbour = resource(),
+      fresh = resource();
     state.begin(1);
     state.stageDetail(1, '0:0', { resources: [old], events: [], hitIndex: new Map() });
     state.stageDetail(1, '1:0', { resources: [neighbour], events: [], hitIndex: new Map() });
     state.commit(1);
-    expect(state.restyleDetail('0:0', { resources: [fresh], events: [], hitIndex: new Map(), sourceEvents: [] })).toBe(true);
+    expect(state.restyleDetail('0:0', { resources: [fresh], events: [], hitIndex: new Map(), sourceEvents: [] })).toBe(
+      true,
+    );
     expect(old.destroyed).toBe(1);
     expect(neighbour.destroyed).toBe(0);
     expect(state.detailTiles.get('0:0')?.resources[0]).toBe(fresh);
@@ -95,7 +132,9 @@ describe('tiled resource ownership and generations', () => {
 
   it('destroys every staged or committed resource exactly once', () => {
     const state = new TiledRenderState();
-    const replaced = resource(), staged = resource(), committed = resource();
+    const replaced = resource(),
+      staged = resource(),
+      committed = resource();
     state.begin(1);
     state.stageDetail(1, '0:0', { resources: [replaced], events: [], hitIndex: new Map() });
     state.stageDetail(1, '0:0', { resources: [staged], events: [], hitIndex: new Map() });
