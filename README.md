@@ -116,6 +116,17 @@ cd server && npm test          # бекенд (in-memory SQLite, реальна 
 npm run --prefix web test      # фронтенд-хелпери (Vitest)
 ```
 
+## Якість коду
+
+```bash
+npm run lint           # ESLint: пошук типових помилок
+npm run lint:fix       # ESLint з автовиправленням
+npm run format         # Prettier: відформатувати код
+npm run format:check   # перевірити форматування без запису
+```
+
+Щоб `git blame` не показував форматування як автора кожного рядка: `git config blame.ignoreRevsFile .git-blame-ignore-revs`.
+
 ## Безпека й примітки
 
 - **Read-only гарантія**: бекенд відкриває базу CoreProtect з `readonly: true, fileMustExist: true` — жодна нова функція не пише у вихідні дані.
