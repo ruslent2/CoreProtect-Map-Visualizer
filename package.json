@@ -7,10 +7,24 @@
   "version": "0.1.0",
   "type": "module",
   "scripts": {
-    "install:all": "cd server && npm install && cd ../web && npm install",
+    "install:all": "npm install && cd server && npm install && cd ../web && npm install",
     "server": "cd server && npm start",
     "dev:server": "cd server && npm run dev",
     "dev:web": "cd web && npm run dev",
-    "build:web": "cd web && npm run build"
+    "build:web": "cd web && npm run build",
+    "lint": "eslint .",
+    "lint:fix": "eslint . --fix",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "typecheck": "cd web && tsc --noEmit",
+    "test": "cd server && npm test && cd ../web && npm test"
+  },
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "eslint": "^10.14.0",
+    "eslint-config-prettier": "^10.1.8",
+    "globals": "^17.13.0",
+    "prettier": "^3.9.10",
+    "typescript-eslint": "^8.72.1"
   }
 }

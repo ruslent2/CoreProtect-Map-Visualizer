@@ -1,0 +1,8 @@
+node_modules
+web/dist
+data
+**/package-lock.json
+*.db
+config.json
+coverage
+*.md
