@@ -125,8 +125,8 @@ test('keyset ordering preserves same-timestamp source/row identities and hasMore
   insert(s, 'container', 100, 9, 0);
   const app = await appFor(s);
   try {
-    let url = '/api/query?pageSize=2',
-      ids = [];
+    let url = '/api/query?pageSize=2';
+    const ids = [];
     for (let page = 0; page < 4; page++) {
       const body = (await app.inject(url)).json();
       ids.push(...body.events.map((e) => `${e.src}:${e.rowid_src}`));

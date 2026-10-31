@@ -508,43 +508,6 @@ interface PickItem {
   color?: string;
 }
 
-function makeMultiPicker(items: PickItem[], selected: string[], onSel: (v: string[]) => void) {
-  const wrap = document.createElement('div');
-  const search = document.createElement('input');
-  search.type = 'text';
-  search.placeholder = t('filters.search');
-  const list = document.createElement('div');
-  list.className = 'list-picker';
-  const render = (q: string) => {
-    list.innerHTML = '';
-    const flt = items.filter((i) => i.label.toLowerCase().includes(q.toLowerCase())).slice(0, 200);
-    for (const it of flt) {
-      const d = document.createElement('div');
-      d.className = 'item' + (selected.includes(it.key) ? ' sel' : '');
-      if (it.color) {
-        const dot = document.createElement('span');
-        dot.className = 'dot';
-        dot.style.background = it.color;
-        d.append(dot);
-      }
-      const label = document.createElement('span');
-      label.textContent = it.label;
-      d.append(label);
-      d.onclick = () => {
-        const v = selected.includes(it.key) ? selected.filter((s) => s !== it.key) : [...selected, it.key];
-        selected = v;
-        onSel(v);
-        d.classList.toggle('sel');
-      };
-      list.append(d);
-    }
-  };
-  search.oninput = () => render(search.value);
-  render('');
-  wrap.append(search, list);
-  return wrap;
-}
-
 function makeCheckboxPicker(
   items: PickItem[],
   selected: string[],

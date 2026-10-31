@@ -64,7 +64,6 @@ let status = t('status.initial');
 let rangeError: string | null = null;
 let resultBounds: BBox | null = null;
 let loading = false;
-let stopped = false;
 let bluemapOpacity = 0.9;
 let xaero: XaeroOverlayLayer;
 let lodMarkersVisible = true;
@@ -379,8 +378,7 @@ function startMassDetails() {
   setLoading(true);
   showStatus(t('status.detailLoading'));
 
-  let run: Promise<void>;
-  run = (async () => {
+  const run: Promise<void> = (async () => {
     // Parallel workers drain the queue until it is empty, stopped, or obsolete.
     const worker = async () => {
       while (isCurrent(request) && !session.isStopped) {
@@ -439,8 +437,7 @@ function startSingleDetail(key: string) {
   setLoading(true);
   showStatus(t('status.areaLoading'));
 
-  let run: Promise<void>;
-  run = (async () => {
+  const run: Promise<void> = (async () => {
     let installed = false;
     try {
       installed = await loadDetailTile(request, key);
@@ -499,7 +496,6 @@ async function apply() {
   generation = localGeneration;
   shownLive = { ...NO_EVENT_VIEW_FILTER };
   setLoading(true);
-  stopped = false;
   dirty = scan.dirty;
   showStatus(t('status.metadata'));
 
@@ -598,7 +594,6 @@ async function apply() {
 }
 
 function stop() {
-  stopped = true;
   detailSession?.stop();
   detailPriority = null;
   scan.stop(generation);

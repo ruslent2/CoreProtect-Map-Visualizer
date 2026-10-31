@@ -222,7 +222,9 @@ export class Store {
     if (this.db) {
       try {
         this.db.close();
-      } catch {}
+      } catch {
+        // Помилка закриття не критична: БД усе одно скидається.
+      }
       this.db = null;
       log('Базу SQLite закрито.');
     }

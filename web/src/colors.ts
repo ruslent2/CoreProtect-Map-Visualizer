@@ -155,9 +155,7 @@ export function hslToRgb(h: number, s: number, l: number): [number, number, numb
   const c = (1 - Math.abs(2 * l - 1)) * s;
   const x = c * (1 - Math.abs(((h / 60) % 2) - 1));
   const m = l - c / 2;
-  let r = 0,
-    g = 0,
-    b = 0;
+  let r: number, g: number, b: number;
   if (h < 60) [r, g, b] = [c, x, 0];
   else if (h < 120) [r, g, b] = [x, c, 0];
   else if (h < 180) [r, g, b] = [0, c, x];
@@ -168,7 +166,7 @@ export function hslToRgb(h: number, s: number, l: number): [number, number, numb
 }
 
 function hueMix(h1: number, h2: number, k: number): number {
-  let d = ((h2 - h1 + 540) % 360) - 180;
+  const d = ((h2 - h1 + 540) % 360) - 180;
   return h1 + d * k;
 }
 
@@ -204,7 +202,7 @@ export function eventColor(e: EventLike, ctx: ColorContext): [number, number, nu
       primary = timeColor(e.time, ctx.tMin, ctx.tMax);
       break;
   }
-  const [ph, ps, pl] = rgbToHsl(...primary);
+  const [ph, ps] = rgbToHsl(...primary);
   const [sh] = rgbToHsl(...secColor);
   const h = hueMix(ph, sh, ctx.mix);
   // Давність → яскравість: новіші події яскравіші

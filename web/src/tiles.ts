@@ -16,12 +16,6 @@ export interface BluemapConfig {
   maxZoom: number;
 }
 
-interface TileKey {
-  z: number;
-  tx: number;
-  tz: number;
-}
-
 /** Keeps UI input and sprites inside Pixi's supported alpha range. */
 export function normalizeBluemapOpacity(alpha: number): number {
   return Number.isFinite(alpha) ? Math.min(1, Math.max(0, alpha)) : 0.9;
@@ -83,7 +77,6 @@ export class BluemapLayer {
     const viewKey = `${z}:${Math.floor(view.x1)}:${Math.floor(view.z1)}:${Math.ceil(view.x2)}:${Math.ceil(view.z2)}`;
     if (viewKey === this.lastView) return;
     this.lastView = viewKey;
-    const generation = this.generation;
     // zoom=1: 500 блоків на грань, zoom=2: 2500, zoom=3: 12500.
     const bpt = this.cfg.blocksPerTileAtZoom0 * Math.pow(this.cfg.lodFactor, z - 1);
     const tileHeightBlocks = bpt * this.cfg.tileAspectRatio;
